@@ -23,6 +23,7 @@ Start your microphone service and (optionally) your sound service. In this examp
 Start microphone service:
 
 ``` sh
+cd wyoming-mic-external/
 script/run \
   --program 'arecord -r 16000 -c 1 -f S16_LE -t raw' \
   --rate 16000 \
@@ -36,6 +37,7 @@ Use `arecord -D <DEVICE> ...` if you need to use a different recording device (l
 In a separate terminal, start the sound service:
 
 ``` sh
+cd wyoming-snd-external/
 script/run \
   --uri 'tcp://127.0.0.1:10601' \
   --program 'aplay -r 22050 -c 1 -f S16_LE -t raw' \
@@ -49,6 +51,7 @@ Use `aplay -D <DEVICE> ...` if you need to use a different playback device (list
 Lastly, start the satellite in a separate terminal:
 
 ``` sh
+cd wyoming-satellite/
 script/run \
   --name 'test satellite' \
   --uri 'tcp://0.0.0.0:10700' \
