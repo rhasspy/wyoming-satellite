@@ -1,0 +1,8 @@
+*
+!requirements.txt
+!MANIFEST.in
+!setup.py
+!script/setup
+!script/run
+!wyoming_satellite/*.py
+!docker/run

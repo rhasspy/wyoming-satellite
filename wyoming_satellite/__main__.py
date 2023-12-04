@@ -3,12 +3,13 @@ import argparse
 import asyncio
 import logging
 import time
+import uuid
 from enum import Enum
 from functools import partial
 from pathlib import Path
 from typing import Optional
 
-from wyoming.asr import Transcript
+from wyoming.asr import Transcript, Transcribe
 from wyoming.audio import AudioChunk, AudioStart, AudioStop
 from wyoming.client import AsyncClient
 from wyoming.event import Event
@@ -59,7 +60,7 @@ async def main() -> None:
     )
     parser.add_argument(
         "--zeroconf-name",
-        help="Name used for zeroconf discovery (default: satellite name)",
+        help="Name used for zeroconf discovery (default: MAC from uuid.getnode)",
     )
     #
     parser.add_argument("--debug", action="store_true", help="Log DEBUG messages")
@@ -86,13 +87,16 @@ async def main() -> None:
     if (not args.no_zeroconf) and isinstance(server, AsyncTcpServer):
         from wyoming.zeroconf import register_server
 
+        if not args.zeroconf_name:
+            args.zeroconf_name = get_mac_address()
+
         tcp_server: AsyncTcpServer = server
         await register_server(
-            name=args.zeroconf_name or args.name,
+            name=args.zeroconf_name,
             port=tcp_server.port,
             host=tcp_server.host,
         )
-        _LOGGER.debug("Zeroconf discovery enabled")
+        _LOGGER.debug("Zeroconf discovery enabled (name=%s)", args.zeroconf_name)
 
     try:
         await server.run(partial(SatelliteEventHandler, wyoming_info, args))
@@ -195,6 +199,7 @@ class SatelliteEventHandler(AsyncEventHandler):
         elif (
             Detect.is_type(event.type)
             or Detection.is_type(event.type)
+            or Transcribe.is_type(event.type)
             or VoiceStarted.is_type(event.type)
             or VoiceStopped.is_type(event.type)
             or Synthesize.is_type(event.type)
@@ -202,6 +207,7 @@ class SatelliteEventHandler(AsyncEventHandler):
             # Other client events:
             # - Detect for start of wake word detection
             # - Detection for when wake word is detected
+            # - Transcribe for when STT starts
             # - VoiceStarted/VoiceStopped for when user starts/stops speaking
             # - Synthesize for TTS text
             await self.forward_event(event)
@@ -320,6 +326,18 @@ class SatelliteEventHandler(AsyncEventHandler):
 
     async def disconnect(self) -> None:
         self.is_running = False
+
+
+# -----------------------------------------------------------------------------
+
+
+def get_mac_address() -> str:
+    """Return MAC address formatted as hex with no colons."""
+    return "".join(
+        ["{:02x}".format((uuid.getnode() >> ele) & 0xFF) for ele in range(0, 8 * 6, 8)][
+            ::-1
+        ]
+    )
 
 
 # -----------------------------------------------------------------------------

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+docker run \
+    -it \
+    -p 10700:10700 \
+    --device /dev/snd \
+    'rhasspy/wyoming-satellite' "$@"

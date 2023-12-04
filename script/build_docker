@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+docker buildx build . \
+    -t 'rhasspy/wyoming-satellite' "$@"
