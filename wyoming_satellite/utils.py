@@ -1,0 +1,89 @@
+"""Utilities for Wyoming satellite."""
+import array
+from typing import Iterable
+
+
+class AudioBuffer:
+    """Fixed-sized audio buffer with variable internal length."""
+
+    def __init__(self, maxlen: int) -> None:
+        """Initialize buffer."""
+        self._buffer = bytearray(maxlen)
+        self._length = 0
+
+    @property
+    def length(self) -> int:
+        """Get number of bytes currently in the buffer."""
+        return self._length
+
+    def clear(self) -> None:
+        """Clear the buffer."""
+        self._length = 0
+
+    def append(self, data: bytes) -> None:
+        """Append bytes to the buffer, increasing the internal length."""
+        data_len = len(data)
+        if (self._length + data_len) > len(self._buffer):
+            raise ValueError("Length cannot be greater than buffer size")
+
+        self._buffer[self._length : self._length + data_len] = data
+        self._length += data_len
+
+    def to_bytes(self) -> bytes:
+        """Convert written portion of buffer to bytes."""
+        return bytes(self._buffer[: self._length])
+
+    def __len__(self) -> int:
+        """Get the number of bytes currently in the buffer."""
+        return self._length
+
+    def __bool__(self) -> bool:
+        """Return True if there are bytes in the buffer."""
+        return self._length > 0
+
+
+def multiply_volume(chunk: bytes, volume_multiplier: float) -> bytes:
+    """Multiplies 16-bit PCM samples by a constant."""
+
+    def _clamp(val: float) -> float:
+        """Clamp to signed 16-bit."""
+        return max(-32768, min(32767, val))
+
+    return array.array(
+        "h",
+        (int(_clamp(value * volume_multiplier)) for value in array.array("h", chunk)),
+    ).tobytes()
+
+
+def chunk_samples(
+    samples: bytes,
+    bytes_per_chunk: int,
+    leftover_chunk_buffer: AudioBuffer,
+) -> Iterable[bytes]:
+    """Yield fixed-sized chunks from samples, keeping leftover bytes from previous call(s)."""
+
+    if (len(leftover_chunk_buffer) + len(samples)) < bytes_per_chunk:
+        # Extend leftover chunk, but not enough samples to complete it
+        leftover_chunk_buffer.append(samples)
+        return
+
+    next_chunk_idx = 0
+
+    if leftover_chunk_buffer:
+        # Add to leftover chunk from previous call(s).
+        bytes_to_copy = bytes_per_chunk - len(leftover_chunk_buffer)
+        leftover_chunk_buffer.append(samples[:bytes_to_copy])
+        next_chunk_idx = bytes_to_copy
+
+        # Process full chunk in buffer
+        yield leftover_chunk_buffer.to_bytes()
+        leftover_chunk_buffer.clear()
+
+    while next_chunk_idx < len(samples) - bytes_per_chunk + 1:
+        # Process full chunk
+        yield samples[next_chunk_idx : next_chunk_idx + bytes_per_chunk]
+        next_chunk_idx += bytes_per_chunk
+
+    # Capture leftover chunks
+    if rest_samples := samples[next_chunk_idx:]:
+        leftover_chunk_buffer.append(rest_samples)

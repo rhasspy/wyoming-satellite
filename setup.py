@@ -27,7 +27,7 @@ setup(
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
-        "License :: OSI Approved :: Apache Software License",
+        "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
@@ -35,4 +35,11 @@ setup(
         "Programming Language :: Python :: 3.11",
     ],
     keywords="rhasspy wyoming satellite",
+    extras_require={
+        "silerovad": ["onnxruntime>=1.10.0,<2", "numpy<1.26"],
+        "webrtc": ["webrtc-noise-gain==1.2.3"],
+    },
+    entry_points={
+        "console_scripts": ["wyoming-satellite = wyoming_satellite:__main__.run"]
+    },
 )
