@@ -8,66 +8,61 @@ Remote satellite using the [Wyoming protocol](https://github.com/rhasspy/wyoming
 script/setup
 ```
 
-You will need a Wyoming microphone and (optionally) a Wyoming sound service:
-
-* [wyoming-mic-external](https://github.com/rhasspy/wyoming-mic-external)
-    * Record audio with an external program like `arecord`
-* [wyoming-snd-external](https://github.com/rhasspy/wyoming-snd-external)
-    * Play audio with an external program like `aplay`
-
-
-## Example
-
-Start your microphone service and (optionally) your sound service. In this example, we will run the microphone service on port `10600` and the sound service on port `10601`.
-
-Start microphone service:
+The examples below uses `alsa-utils` to record and play audio:
 
 ``` sh
-cd wyoming-mic-external/
-script/run \
-  --program 'arecord -r 16000 -c 1 -f S16_LE -t raw' \
-  --rate 16000 \
-  --width 2 \
-  --channels 1 \
-  --uri 'tcp://127.0.0.1:10600'
+sudo apt-get install alsa-utils
 ```
 
-Use `arecord -D <DEVICE> ...` if you need to use a different recording device (list them with `arecord -L` and prefer `plughw:` devices). Add `--debug` to print additional logs.
 
-In a separate terminal, start the sound service:
+## Remote Wake Word Detection
 
-``` sh
-cd wyoming-snd-external/
-script/run \
-  --uri 'tcp://127.0.0.1:10601' \
-  --program 'aplay -r 22050 -c 1 -f S16_LE -t raw' \
-  --rate 22050 \
-  --width 2 \
-  --channels 1
-```
-
-Use `aplay -D <DEVICE> ...` if you need to use a different playback device (list them with `aplay -L` and prefer `plughw:` devices). Add `--debug` to print additional logs.
-
-Lastly, start the satellite in a separate terminal:
+Run the satellite with remote wake word detection:
 
 ``` sh
 cd wyoming-satellite/
 script/run \
-  --name 'test satellite' \
+  --name 'my satellite' \
   --uri 'tcp://0.0.0.0:10700' \
-  --mic-uri 'tcp://127.0.0.1:10600' \
-  --snd-uri 'tcp://127.0.0.1:10601'
+  --mic-command 'arecord -r 16000 -c 1 -f S16_LE -t raw' \
+  --snd-command 'aplay -r 22050 -c 1 -f S16_LE -t raw'
 ```
 
-This will run the satellite on port `10700` and use the local microphone/sound services. Add `--debug` to print additional logs.
+This will use the default microphone and playback devices.
+
+Use `arecord -D <DEVICE> ...` if you need to use a different microphone (list them with `arecord -L` and prefer `plughw:` devices).
+Use `aplay -D <DEVICE> ...` if you need to use a different playback device (list them with `aplay -L` and prefer `plughw:` devices).
+
+Add `--debug` to print additional logs.
+
+In the [Home Assistant](https://www.home-assistant.io/) settings "Devices & services" page, you should see the satellite discovered automatically. If not, click "Add Integration", choose "Wyoming Protocol", and enter the IP address of the satellite (port 10700).
 
 Audio will be continuously streamed to the server, where wake word detection, etc. will occur.
 
-### Local Wake Word Detection
+### Voice Activity Detection
+
+Install the dependencies for silero VAD:
+
+``` sh
+.venv/bin/pip3 install 'pysilero-vad==1.0.0'
+```
+
+Run the satellite with VAD enabled:
+
+``` sh
+script/run \
+  ... \
+  --vad
+```
+
+Now, audio will only start streaming once speech has been detected.
+
+## Local Wake Word Detection
 
 Install a wake word detection service, such as [wyoming-openwakeword](https://github.com/rhasspy/wyoming-openwakeword/) and start it:
 
 ``` sh
+cd wyoming-openwakeword/
 script/run \
   --uri 'tcp://0.0.0.0:10400' \
   --preload-model 'ok_nabu'
@@ -88,28 +83,60 @@ Included wake words are:
 Next, start the satellite with some additional arguments:
 
 ``` sh
+cd wyoming-satellite/
 script/run \
-  --name 'test satellite' \
+  --name 'my satellite' \
   --uri 'tcp://0.0.0.0:10700' \
-  --mic-uri 'tcp://127.0.0.1:10600' \
-  --snd-uri 'tcp://127.0.0.1:10601' \
+  --mic-command 'arecord -r 16000 -c 1 -f S16_LE -t raw' \
+  --snd-command 'aplay -r 22050 -c 1 -f S16_LE -t raw' \
   --wake-uri 'tcp://127.0.0.1:10400' \
   --wake-word 'ok_nabu'
 ```
 
 Audio will only be streamed to the server after the wake word has been detected.
 
-### Event Service
+## Sounds
 
-Satellites can respond to events from the server using an event service (`--event-uri`). See `wyoming_satellite/example_event_client.py` for a basic client that just logs events.
+You can play a WAV file when the wake word is detected (locally or remotely), and when speech-to-text has completed:
 
-Available events are:
+* `--awake-wav <WAV>` - played when the wake word is detected
+* `--done-wav <WAV>` - played when the voice command is finished
 
-* `Detect` - start of wake word detection
-* `Detection` - wake word is detected
-* `VoiceStarted` - user has started speaking
-* `VoiceStopped` - user has stopped speaking
-* `Transcript` - text spoken by user
-* `Synthesize` - text response that will be spoken
-* `AudioStart` - response audio started
-* `AudioStop` - response audio stopped
+If you want to play audio files other than WAV, use [event commands](#event-commands). Specifically, the `--detection-command` to replace `--awake-wav` and `--transcript-command` to replace `--done-wav`.
+
+## Audio Enhancements
+
+Install the dependencies for webrtc:
+
+``` sh
+.venv/bin/pip3 install 'webrtc-noise-gain==1.2.3'
+```
+
+Run the satellite with automatic gain control and noise suppression:
+
+``` sh
+script/run \
+  ... \
+  --auto-gain 5 \
+  --noise-suppression 2
+```
+
+Automatic gain control is between 0-31, which 31 being the loudest.
+Noise suppression is from 0-4, with 4 being maximum suppression (may cause audio distortion).
+
+You can also use `--mic-volume-multiplier X` to multiply all audio samples by `X`. For example, using 2 for `X` will double the microphone volume (but may cause audio distortion). The corresponding `--snd-volume-multiplier` does the same for audio playback.
+
+## Event Commands
+
+Satellites can respond to events from the server by running commands:
+
+* `--streaming-start-command` - audio has started streaming to server
+* `--detection-command` - wake word is detected (wake word name on stdin)
+* `--transcript-command` - speech-to-text transcript is returned (text on stdin)
+* `--stt-start-command` - user started speaking (no stdin)
+* `--stt-stop-command` - user stopped speaking (no stdin)
+* `--synthesize-command` - text-to-speech text is returned (text on stdin)
+* `--tts-start-command` - text-to-speech response started (no stdin)
+* `--tts-stop-command` - text-to-speech response stopped (no stdin)
+
+For more advanced scenarios, use an event service (`--event-uri`). See `wyoming_satellite/example_event_client.py` for a basic client that just logs events.

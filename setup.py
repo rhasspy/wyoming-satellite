@@ -36,7 +36,7 @@ setup(
     ],
     keywords="rhasspy wyoming satellite",
     extras_require={
-        "silerovad": ["onnxruntime>=1.10.0,<2", "numpy<1.26"],
+        "silerovad": ["pysilero-vad==1.0.0"],
         "webrtc": ["webrtc-noise-gain==1.2.3"],
     },
     entry_points={
