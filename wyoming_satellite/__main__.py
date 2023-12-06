@@ -144,6 +144,37 @@ async def main() -> None:
     parser.add_argument(
         "--event-uri", help="URI of Wyoming service to forward events to"
     )
+    parser.add_argument(
+        "--detection-command", help="Command to run when wake word is detected"
+    )
+    parser.add_argument(
+        "--transcript-command",
+        help="Command to run when speech to text transcript is returned",
+    )
+    parser.add_argument(
+        "--stt-start-command",
+        help="Command to run when the user starts speaking",
+    )
+    parser.add_argument(
+        "--stt-stop-command",
+        help="Command to run when the user stops speaking",
+    )
+    parser.add_argument(
+        "--synthesize-command",
+        help="Command to run when text to speech text is returned",
+    )
+    parser.add_argument(
+        "--tts-start-command",
+        help="Command to run when text to speech response starts",
+    )
+    parser.add_argument(
+        "--tts-stop-command",
+        help="Command to run when text to speech response stops",
+    )
+    parser.add_argument(
+        "--streaming-start-command",
+        help="Command to run when audio streaming starts",
+    )
 
     # Sounds
     parser.add_argument(
@@ -296,7 +327,10 @@ class SatelliteEventHandler(AsyncEventHandler):
 
         _LOGGER.debug("Client connected: %s", self.client_id)
 
+    # -------------------------------------------------------------------------
+
     async def handle_event(self, event: Event) -> bool:
+        """Handle events from the server."""
         if Describe.is_type(event.type):
             await self.write_event(self.wyoming_info_event)
             _LOGGER.debug("Sent info to client: %s", self.client_id)
@@ -323,7 +357,7 @@ class SatelliteEventHandler(AsyncEventHandler):
                 self.state = SatelliteState.VAD_RESET
 
             # STT transcript
-            await self.forward_event(event)
+            await self._forward_event(event)
             _LOGGER.debug(event)
         elif self.has_snd and (
             AudioStart.is_type(event.type)
@@ -336,7 +370,7 @@ class SatelliteEventHandler(AsyncEventHandler):
                 if self.snd_client is not None:
                     await self.snd_client.connect()
 
-                await self.forward_event(event)
+                await self._forward_event(event)
                 _LOGGER.debug(event)
             elif AudioChunk.is_type(event.type) and (self.snd_client is not None):
                 # Forward to sound service
@@ -344,7 +378,7 @@ class SatelliteEventHandler(AsyncEventHandler):
                 await self.snd_client.write_event(event)
             elif AudioStop.is_type(event.type):
                 # TTS stop
-                await self.forward_event(event)
+                await self._forward_event(event)
                 _LOGGER.debug(event)
 
                 if self.snd_client is not None:
@@ -354,7 +388,7 @@ class SatelliteEventHandler(AsyncEventHandler):
             if self.cli_args.awake_wav:
                 await self._play_wav(self.cli_args.awake_wav)
 
-            await self.forward_event(event)
+            await self._forward_event(event)
             _LOGGER.debug(event)
         elif (
             Detect.is_type(event.type)
@@ -369,52 +403,25 @@ class SatelliteEventHandler(AsyncEventHandler):
             # - Transcribe for when STT starts
             # - VoiceStarted/VoiceStopped for when user starts/stops speaking
             # - Synthesize for TTS text
-            await self.forward_event(event)
+            await self._forward_event(event)
             _LOGGER.debug(event)
         elif Error.is_type(event.type):
-            await self.forward_event(event)
+            await self._forward_event(event)
             _LOGGER.warning(event)
         else:
             _LOGGER.debug("Unexpected event: type=%s, data=%s", event.type, event.data)
 
         return True
 
-    def _make_mic_client(self) -> AsyncClient:
-        if self.cli_args.mic_command:
-            _LOGGER.debug("Running %s", self.cli_args.mic_command)
-            program, *program_args = shlex.split(self.cli_args.mic_command)
-            return MicProcessAsyncClient(
-                rate=self.cli_args.mic_command_rate,
-                width=self.cli_args.mic_command_width,
-                channels=self.cli_args.mic_command_channels,
-                samples_per_chunk=self.cli_args.mic_command_samples_per_chunk,
-                program=program,
-                program_args=program_args,
-            )
+    async def disconnect(self) -> None:
+        self.is_running = False
 
-        assert self.cli_args.mic_uri
-        _LOGGER.debug("Connecting to %s", self.cli_args.mic_uri)
-        return AsyncClient.from_uri(self.cli_args.mic_uri)
-
-    async def _ensure_snd_client(self) -> None:
-        if (not self.has_snd) or (self.snd_client is not None):
-            return
-
-        if self.cli_args.snd_command:
-            _LOGGER.debug("Running %s", self.cli_args.snd_command)
-            program, *program_args = shlex.split(self.cli_args.snd_command)
-            self.snd_client = SndProcessAsyncClient(
-                rate=self.cli_args.snd_command_rate,
-                width=self.cli_args.snd_command_width,
-                channels=self.cli_args.snd_command_channels,
-                program=program,
-                program_args=program_args,
-            )
-        else:
-            _LOGGER.debug("Connecting to %s", self.cli_args.snd_uri)
-            self.snd_client = AsyncClient.from_uri(self.cli_args.snd_uri)
+    # -------------------------------------------------------------------------
+    # Tasks
+    # -------------------------------------------------------------------------
 
     async def run_satellite(self) -> None:
+        """Task to read mic input and do remote wake word detection."""
         try:
             mic_client = self._make_mic_client()
             async with mic_client:
@@ -446,15 +453,7 @@ class SatelliteEventHandler(AsyncEventHandler):
                             _LOGGER.info("Streaming audio")
 
                             # Start pipeline
-                            await self.write_event(
-                                RunPipeline(
-                                    start_stage=PipelineStage.WAKE,
-                                    end_stage=PipelineStage.TTS
-                                    if self.has_snd
-                                    else PipelineStage.HANDLE,
-                                    name=self.cli_args.pipeline,
-                                ).event()
-                            )
+                            await self._run_pipeline(PipelineStage.WAKE)
                         else:
                             # Wait for speech
                             chunk = AudioChunk.from_event(mic_event)
@@ -463,15 +462,7 @@ class SatelliteEventHandler(AsyncEventHandler):
                                 self.state = SatelliteState.ASR
 
                                 # Start pipeline
-                                await self.write_event(
-                                    RunPipeline(
-                                        start_stage=PipelineStage.WAKE,
-                                        end_stage=PipelineStage.TTS
-                                        if self.has_snd
-                                        else PipelineStage.HANDLE,
-                                        name=self.cli_args.pipeline,
-                                    ).event()
-                                )
+                                await self._run_pipeline(PipelineStage.WAKE)
 
                                 if self.vad_buffer:
                                     # Send contents of VAD buffer first
@@ -497,6 +488,7 @@ class SatelliteEventHandler(AsyncEventHandler):
             _LOGGER.exception("Unexpected error in run_satellite")
 
     async def run_satellite_wake(self) -> None:
+        """Task to read mic input and do local wake word detection."""
         try:
             assert self.cli_args.wake_uri or self.cli_args.wake_command
 
@@ -526,7 +518,7 @@ class SatelliteEventHandler(AsyncEventHandler):
                     detect_event = Detect().event()
 
                 await wake_client.write_event(detect_event)
-                await self.forward_event(detect_event)
+                await self._forward_event(detect_event)
                 _LOGGER.debug(detect_event)
 
                 # Read events in parallel
@@ -571,21 +563,13 @@ class SatelliteEventHandler(AsyncEventHandler):
                             self.state = SatelliteState.ASR
 
                             # Start pipeline
-                            await self.write_event(
-                                RunPipeline(
-                                    start_stage=PipelineStage.ASR,
-                                    end_stage=PipelineStage.TTS
-                                    if self.has_snd
-                                    else PipelineStage.HANDLE,
-                                    name=self.cli_args.pipeline,
-                                ).event()
-                            )
+                            await self._run_pipeline(PipelineStage.ASR)
 
                             # Forward to server
                             await self.write_event(wake_event)
 
                             # Forward to client
-                            await self.forward_event(wake_event)
+                            await self._forward_event(wake_event)
 
                             _LOGGER.info("Streaming audio")
 
@@ -594,6 +578,58 @@ class SatelliteEventHandler(AsyncEventHandler):
                         pending.add(wake_task)
         except Exception:
             _LOGGER.exception("Unexpected error in run_satellite")
+
+    # -------------------------------------------------------------------------
+
+    def _make_mic_client(self) -> AsyncClient:
+        """Create mic client."""
+        if self.cli_args.mic_command:
+            _LOGGER.debug("Running %s", self.cli_args.mic_command)
+            program, *program_args = shlex.split(self.cli_args.mic_command)
+            return MicProcessAsyncClient(
+                rate=self.cli_args.mic_command_rate,
+                width=self.cli_args.mic_command_width,
+                channels=self.cli_args.mic_command_channels,
+                samples_per_chunk=self.cli_args.mic_command_samples_per_chunk,
+                program=program,
+                program_args=program_args,
+            )
+
+        assert self.cli_args.mic_uri
+        _LOGGER.debug("Connecting to %s", self.cli_args.mic_uri)
+        return AsyncClient.from_uri(self.cli_args.mic_uri)
+
+    async def _ensure_snd_client(self) -> None:
+        """Create snd client if necessary."""
+        if (not self.has_snd) or (self.snd_client is not None):
+            return
+
+        if self.cli_args.snd_command:
+            _LOGGER.debug("Running %s", self.cli_args.snd_command)
+            program, *program_args = shlex.split(self.cli_args.snd_command)
+            self.snd_client = SndProcessAsyncClient(
+                rate=self.cli_args.snd_command_rate,
+                width=self.cli_args.snd_command_width,
+                channels=self.cli_args.snd_command_channels,
+                program=program,
+                program_args=program_args,
+            )
+        else:
+            _LOGGER.debug("Connecting to %s", self.cli_args.snd_uri)
+            self.snd_client = AsyncClient.from_uri(self.cli_args.snd_uri)
+
+    async def _run_pipeline(self, start_stage: PipelineStage) -> None:
+        """Tell server to start running the pipeline."""
+        await self.write_event(
+            RunPipeline(
+                start_stage=start_stage,
+                end_stage=PipelineStage.TTS if self.has_snd else PipelineStage.HANDLE,
+                name=self.cli_args.pipeline,
+            ).event()
+        )
+
+        if self.cli_args.streaming_start_command:
+            await self._run_event_command(self.cli_args.streaming_start_command)
 
     def _process_mic_audio(self, audio_event: Event) -> Event:
         """Perform microphone audio processing, if necessary."""
@@ -636,9 +672,41 @@ class SatelliteEventHandler(AsyncEventHandler):
             audio=audio_bytes,
         ).event()
 
-    async def forward_event(self, event: Event) -> None:
-        """Forward a Wyoming event to a client."""
+    async def _forward_event(self, event: Event) -> None:
+        """Forward a Wyoming event to a client and run event commands."""
+        if self.cli_args.detection_command and Detection.is_type(event.type):
+            # Wake word is detected
+            detection = Detection.from_event(event)
+            await self._run_event_command(
+                self.cli_args.detection_command, detection.name
+            )
+        elif self.cli_args.transcript_command and Transcript.is_type(event.type):
+            # STT text is available
+            transcript = Transcript.from_event(event)
+            await self._run_event_command(
+                self.cli_args.transcript_command, transcript.text
+            )
+        elif self.cli_args.stt_start_command and VoiceStarted.is_type(event.type):
+            # User starts speaking
+            await self._run_event_command(self.cli_args.stt_start_command)
+        elif self.cli_args.stt_stop_command and VoiceStopped.is_type(event.type):
+            # User stops speaking
+            await self._run_event_command(self.cli_args.stt_stop_command)
+        elif self.cli_args.synthesize_command and Synthesize.is_type(event.type):
+            # TTS text is available
+            synthesize = Synthesize.from_event(event)
+            await self._run_event_command(
+                self.cli_args.synthesize_command, synthesize.text
+            )
+        elif self.cli_args.tts_start_command and AudioStart.is_type(event.type):
+            # TTS audio start
+            await self._run_event_command(self.cli_args.tts_start_command)
+        elif self.cli_args.tts_stop_command and AudioStop.is_type(event.type):
+            # TTS audio stop
+            await self._run_event_command(self.cli_args.tts_stop_command)
+
         if not self.cli_args.event_uri:
+            # No external service
             return
 
         if self.events_client is None:
@@ -649,10 +717,25 @@ class SatelliteEventHandler(AsyncEventHandler):
         assert self.events_client is not None
         await self.events_client.write_event(event)
 
-    async def disconnect(self) -> None:
-        self.is_running = False
+    async def _run_event_command(
+        self, command: str, command_input: Optional[str] = None
+    ) -> None:
+        """Run a custom event command with optional input."""
+        _LOGGER.debug("Running %s", command)
+        program, *program_args = shlex.split(command)
+        proc = await asyncio.create_subprocess_exec(
+            program, *program_args, stdin=asyncio.subprocess.PIPE
+        )
+        assert proc.stdin is not None
+
+        if command_input:
+            await proc.communicate(input=command_input.encode("utf-8"))
+        else:
+            proc.stdin.close()
+            await proc.wait()
 
     async def _play_wav(self, wav_path: Union[str, Path]) -> None:
+        """Send WAV file to snd client as audio chunks."""
         await self._ensure_snd_client()
 
         if self.snd_client is None:
@@ -751,6 +834,8 @@ class WebRtcAudio:
 
 
 class SileroVad:
+    """Voice activity detection with silero VAD."""
+
     def __init__(self, threshold: float, trigger_level: int) -> None:
         from pysilero_vad import SileroVoiceActivityDetector
 
