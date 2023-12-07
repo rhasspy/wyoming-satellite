@@ -486,6 +486,8 @@ class SatelliteEventHandler(AsyncEventHandler):
 
         except Exception:
             _LOGGER.exception("Unexpected error in run_satellite")
+        except ConnectionResetError:
+            _LOGGER.info("Server disconnected")
 
     async def run_satellite_wake(self) -> None:
         """Task to read mic input and do local wake word detection."""
@@ -578,6 +580,8 @@ class SatelliteEventHandler(AsyncEventHandler):
                         pending.add(wake_task)
         except Exception:
             _LOGGER.exception("Unexpected error in run_satellite")
+        except ConnectionResetError:
+            _LOGGER.info("Server disconnected")
 
     # -------------------------------------------------------------------------
 
