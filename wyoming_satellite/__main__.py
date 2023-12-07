@@ -218,7 +218,7 @@ async def main() -> None:
         try:
             import pysilero_vad  # noqa: F401
         except ImportError:
-            _LOGGER.fatal("Install extras for silero")
+            _LOGGER.fatal("Install extras for silerovad")
             sys.exit(1)
 
     if args.awake_wav and (not Path(args.awake_wav).is_file()):

@@ -16,7 +16,7 @@ if requirements_path.is_file():
 # -----------------------------------------------------------------------------
 
 setup(
-    name="wyoming_handle_external",
+    name="wyoming_satellite",
     version="1.0.0",
     description="Wyoming server for remote voice satellite",
     url="http://github.com/rhasspy/wyoming-satellite",
