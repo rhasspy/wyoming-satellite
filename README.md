@@ -130,6 +130,7 @@ You can also use `--mic-volume-multiplier X` to multiply all audio samples by `X
 
 Satellites can respond to events from the server by running commands:
 
+* `--detect-command` - wake word detection has started, but not detected yet (no stdin)
 * `--streaming-start-command` - audio has started streaming to server
 * `--detection-command` - wake word is detected (wake word name on stdin)
 * `--transcript-command` - speech-to-text transcript is returned (text on stdin)
@@ -138,5 +139,6 @@ Satellites can respond to events from the server by running commands:
 * `--synthesize-command` - text-to-speech text is returned (text on stdin)
 * `--tts-start-command` - text-to-speech response started (no stdin)
 * `--tts-stop-command` - text-to-speech response stopped (no stdin)
+* `--error-command` - an error was sent from the server (text on stdin)
 
 For more advanced scenarios, use an event service (`--event-uri`). See `wyoming_satellite/example_event_client.py` for a basic client that just logs events.

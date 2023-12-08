@@ -146,6 +146,9 @@ async def main() -> None:
         "--event-uri", help="URI of Wyoming service to forward events to"
     )
     parser.add_argument(
+        "--detect-command", help="Command to run when wake word detection starts"
+    )
+    parser.add_argument(
         "--detection-command", help="Command to run when wake word is detected"
     )
     parser.add_argument(
@@ -176,6 +179,10 @@ async def main() -> None:
         "--streaming-start-command",
         help="Command to run when audio streaming starts",
     )
+    parser.add_argument(
+        "--error-command",
+        help="Command to run when an error occurs",
+    )
 
     # Sounds
     parser.add_argument(
@@ -198,6 +205,10 @@ async def main() -> None:
     parser.add_argument(
         "--zeroconf-name",
         help="Name used for zeroconf discovery (default: MAC from uuid.getnode)",
+    )
+    parser.add_argument(
+        "--zeroconf-host",
+        help="Host address for zeroconf discovery (default: detect)",
     )
     #
     parser.add_argument("--debug", action="store_true", help="Log DEBUG messages")
@@ -261,9 +272,13 @@ async def main() -> None:
         await register_server(
             name=args.zeroconf_name,
             port=tcp_server.port,
-            host=tcp_server.host,
+            host=args.zeroconf_host,
         )
-        _LOGGER.debug("Zeroconf discovery enabled (name=%s)", args.zeroconf_name)
+        _LOGGER.debug(
+            "Zeroconf discovery enabled (name=%s, host=%s)",
+            args.zeroconf_name,
+            args.zeroconf_host,
+        )
 
     try:
         await server.run(partial(SatelliteEventHandler, wyoming_info, args))
@@ -699,7 +714,10 @@ class SatelliteEventHandler(AsyncEventHandler):
 
     async def _forward_event(self, event: Event) -> None:
         """Forward a Wyoming event to a client and run event commands."""
-        if self.cli_args.detection_command and Detection.is_type(event.type):
+        if self.cli_args.detect_command and Detect.is_type(event.type):
+            # Wake word detection started
+            await self._run_event_command(self.cli_args.detect_command)
+        elif self.cli_args.detection_command and Detection.is_type(event.type):
             # Wake word is detected
             detection = Detection.from_event(event)
             await self._run_event_command(
@@ -729,6 +747,10 @@ class SatelliteEventHandler(AsyncEventHandler):
         elif self.cli_args.tts_stop_command and AudioStop.is_type(event.type):
             # TTS audio stop
             await self._run_event_command(self.cli_args.tts_stop_command)
+        elif self.cli_args.error_command and Error.is_type(event.type):
+            # Error occurred
+            error = Error.from_event(event)
+            await self._run_event_command(self.cli_args.error_command, error.text)
 
         if not self.cli_args.event_uri:
             # No external service
