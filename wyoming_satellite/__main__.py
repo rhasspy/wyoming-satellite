@@ -36,6 +36,7 @@ _DIR = Path(__file__).parent
 
 
 class SatelliteState(str, Enum):
+    WAKE_START = "wake-start"
     WAKE = "wake"
     ASR = "asr"
     VAD_RESET = "vad-reset"
@@ -354,11 +355,9 @@ class SatelliteEventHandler(AsyncEventHandler):
             return True
 
         if RunSatellite.is_type(event.type) and (self.satellite_task is None):
-            self.after_tts_state = None
-
             if self.has_wake:
                 # Local wake word detection
-                self.state = SatelliteState.WAKE
+                self.state = SatelliteState.WAKE_START
                 self.satellite_task = asyncio.create_task(self.run_satellite_wake())
             else:
                 # Remote wake word detection
@@ -371,12 +370,11 @@ class SatelliteEventHandler(AsyncEventHandler):
 
             # STT transcript
             await self._forward_event(event)
-            _LOGGER.debug(event)
+            _LOGGER.debug("-> %s", event)
 
             if self.has_wake:
                 # Ready for next wake word detection
-                self.state = SatelliteState.WAKE
-                _LOGGER.info("Detecting wake word")
+                self.state = SatelliteState.WAKE_START
             else:
                 self.state = SatelliteState.VAD_RESET
         elif self.has_snd and (
@@ -395,7 +393,7 @@ class SatelliteEventHandler(AsyncEventHandler):
                     self.state = SatelliteState.PLAYING_AUDIO
 
                 await self._forward_event(event)
-                _LOGGER.debug(event)
+                _LOGGER.debug("-> %s", event)
             elif AudioChunk.is_type(event.type) and (self.snd_client is not None):
                 # Forward to sound service
                 event = self._process_snd_audio(event)
@@ -403,7 +401,7 @@ class SatelliteEventHandler(AsyncEventHandler):
             elif AudioStop.is_type(event.type):
                 # TTS stop
                 await self._forward_event(event)
-                _LOGGER.debug(event)
+                _LOGGER.debug("-> %s", event)
 
                 if self.snd_client is not None:
                     await self.snd_client.disconnect()
@@ -421,7 +419,7 @@ class SatelliteEventHandler(AsyncEventHandler):
                 self.state = last_state
 
             await self._forward_event(event)
-            _LOGGER.debug(event)
+            _LOGGER.debug("-> %s", event)
         elif (
             Detect.is_type(event.type)
             or Transcribe.is_type(event.type)
@@ -435,7 +433,7 @@ class SatelliteEventHandler(AsyncEventHandler):
             # - VoiceStarted/VoiceStopped for when user starts/stops speaking
             # - Synthesize for TTS text
             await self._forward_event(event)
-            _LOGGER.debug(event)
+            _LOGGER.debug("-> %s", event)
         elif Error.is_type(event.type):
             await self._forward_event(event)
             _LOGGER.warning(event)
@@ -456,7 +454,7 @@ class SatelliteEventHandler(AsyncEventHandler):
         try:
             mic_client = self._make_mic_client()
             async with mic_client:
-                while True:
+                while self.is_running:
                     mic_event = await mic_client.read_event()
                     if mic_event is None:
                         _LOGGER.warning("Microphone service disconnected")
@@ -542,24 +540,31 @@ class SatelliteEventHandler(AsyncEventHandler):
                 wake_client = AsyncClient.from_uri(self.cli_args.wake_uri)
 
             async with mic_client, wake_client:
-                _LOGGER.info("Detecting wake word")
-
-                if self.cli_args.wake_word_name:
-                    # Request specific wake word(s)
-                    detect_event = Detect(names=self.cli_args.wake_word_name).event()
-                else:
-                    detect_event = Detect().event()
-
-                await wake_client.write_event(detect_event)
-                await self._forward_event(detect_event)
-                _LOGGER.debug(detect_event)
-
                 # Read events in parallel
                 mic_task = asyncio.create_task(mic_client.read_event())
                 wake_task = asyncio.create_task(wake_client.read_event())
                 pending = {mic_task, wake_task}
 
                 while self.is_running:
+                    if self.state == SatelliteState.WAKE_START:
+                        # Send detect event
+                        _LOGGER.info("Detecting wake word")
+
+                        if self.cli_args.wake_word_name:
+                            # Request specific wake word(s)
+                            detect_event = Detect(
+                                names=self.cli_args.wake_word_name
+                            ).event()
+                        else:
+                            detect_event = Detect().event()
+
+                        _LOGGER.debug("<- %s", detect_event)
+                        await wake_client.write_event(detect_event)
+                        await self._forward_event(detect_event)
+
+                        self.state = SatelliteState.WAKE
+
+                    # Wait for mic/wake events
                     done, pending = await asyncio.wait(
                         pending, return_when=asyncio.FIRST_COMPLETED
                     )
