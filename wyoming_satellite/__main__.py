@@ -134,7 +134,7 @@ async def main() -> None:
     )
     parser.add_argument("--vad-threshold", type=float, default=0.5)
     parser.add_argument("--vad-trigger-level", type=int, default=1)
-    parser.add_argument("--vad-buffer-seconds", type=float, default=1)
+    parser.add_argument("--vad-buffer-seconds", type=float, default=0.5)
 
     # Audio enhancement (requires webrtc-noise-audio)
     parser.add_argument(
@@ -145,6 +145,9 @@ async def main() -> None:
     # External event handlers
     parser.add_argument(
         "--event-uri", help="URI of Wyoming service to forward events to"
+    )
+    parser.add_argument(
+        "--startup-command", help="Command run when the satellite starts"
     )
     parser.add_argument(
         "--detect-command", help="Command to run when wake word detection starts"
@@ -257,6 +260,9 @@ async def main() -> None:
             installed=True,
         )
     )
+
+    if args.startup_command:
+        await run_event_command(args.startup_command)
 
     _LOGGER.info("Ready")
 
@@ -474,6 +480,8 @@ class SatelliteEventHandler(AsyncEventHandler):
                             self.vad_buffer.put(bytes(self.vad_buffer.maxlen))
 
                         self.state = SatelliteState.VAD_WAIT
+                        if self.process_vad is not None:
+                            _LOGGER.info("Waiting for speech")
 
                     if self.state == SatelliteState.VAD_WAIT:
                         if self.process_vad is None:
@@ -674,7 +682,7 @@ class SatelliteEventHandler(AsyncEventHandler):
         )
 
         if self.cli_args.streaming_start_command:
-            await self._run_event_command(self.cli_args.streaming_start_command)
+            await run_event_command(self.cli_args.streaming_start_command)
 
     def _process_mic_audio(self, audio_event: Event) -> Event:
         """Perform microphone audio processing, if necessary."""
@@ -721,41 +729,35 @@ class SatelliteEventHandler(AsyncEventHandler):
         """Forward a Wyoming event to a client and run event commands."""
         if self.cli_args.detect_command and Detect.is_type(event.type):
             # Wake word detection started
-            await self._run_event_command(self.cli_args.detect_command)
+            await run_event_command(self.cli_args.detect_command)
         elif self.cli_args.detection_command and Detection.is_type(event.type):
             # Wake word is detected
             detection = Detection.from_event(event)
-            await self._run_event_command(
-                self.cli_args.detection_command, detection.name
-            )
+            await run_event_command(self.cli_args.detection_command, detection.name)
         elif self.cli_args.transcript_command and Transcript.is_type(event.type):
             # STT text is available
             transcript = Transcript.from_event(event)
-            await self._run_event_command(
-                self.cli_args.transcript_command, transcript.text
-            )
+            await run_event_command(self.cli_args.transcript_command, transcript.text)
         elif self.cli_args.stt_start_command and VoiceStarted.is_type(event.type):
             # User starts speaking
-            await self._run_event_command(self.cli_args.stt_start_command)
+            await run_event_command(self.cli_args.stt_start_command)
         elif self.cli_args.stt_stop_command and VoiceStopped.is_type(event.type):
             # User stops speaking
-            await self._run_event_command(self.cli_args.stt_stop_command)
+            await run_event_command(self.cli_args.stt_stop_command)
         elif self.cli_args.synthesize_command and Synthesize.is_type(event.type):
             # TTS text is available
             synthesize = Synthesize.from_event(event)
-            await self._run_event_command(
-                self.cli_args.synthesize_command, synthesize.text
-            )
+            await run_event_command(self.cli_args.synthesize_command, synthesize.text)
         elif self.cli_args.tts_start_command and AudioStart.is_type(event.type):
             # TTS audio start
-            await self._run_event_command(self.cli_args.tts_start_command)
+            await run_event_command(self.cli_args.tts_start_command)
         elif self.cli_args.tts_stop_command and AudioStop.is_type(event.type):
             # TTS audio stop
-            await self._run_event_command(self.cli_args.tts_stop_command)
+            await run_event_command(self.cli_args.tts_stop_command)
         elif self.cli_args.error_command and Error.is_type(event.type):
             # Error occurred
             error = Error.from_event(event)
-            await self._run_event_command(self.cli_args.error_command, error.text)
+            await run_event_command(self.cli_args.error_command, error.text)
 
         if not self.cli_args.event_uri:
             # No external service
@@ -768,23 +770,6 @@ class SatelliteEventHandler(AsyncEventHandler):
 
         assert self.events_client is not None
         await self.events_client.write_event(event)
-
-    async def _run_event_command(
-        self, command: str, command_input: Optional[str] = None
-    ) -> None:
-        """Run a custom event command with optional input."""
-        _LOGGER.debug("Running %s", command)
-        program, *program_args = shlex.split(command)
-        proc = await asyncio.create_subprocess_exec(
-            program, *program_args, stdin=asyncio.subprocess.PIPE
-        )
-        assert proc.stdin is not None
-
-        if command_input:
-            await proc.communicate(input=command_input.encode("utf-8"))
-        else:
-            proc.stdin.close()
-            await proc.wait()
 
     async def _play_wav(self, wav_path: Union[str, Path]) -> None:
         """Send WAV file to snd client as audio chunks."""
@@ -859,6 +844,25 @@ def needs_webrtc(args: argparse.Namespace) -> bool:
 def needs_silero(args: argparse.Namespace) -> bool:
     """Return True if silero-vad must be used."""
     return args.vad
+
+
+async def run_event_command(command: str, command_input: Optional[str] = None) -> None:
+    """Run a custom event command with optional input."""
+    if not command:
+        return
+
+    _LOGGER.debug("Running %s", command)
+    program, *program_args = shlex.split(command)
+    proc = await asyncio.create_subprocess_exec(
+        program, *program_args, stdin=asyncio.subprocess.PIPE
+    )
+    assert proc.stdin is not None
+
+    if command_input:
+        await proc.communicate(input=command_input.encode("utf-8"))
+    else:
+        proc.stdin.close()
+        await proc.wait()
 
 
 class WebRtcAudio:
