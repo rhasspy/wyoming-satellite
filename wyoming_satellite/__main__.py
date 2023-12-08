@@ -369,16 +369,16 @@ class SatelliteEventHandler(AsyncEventHandler):
                 self.state = SatelliteState.PLAYING_AUDIO
                 await self._play_wav(self.cli_args.done_wav)
 
+            # STT transcript
+            await self._forward_event(event)
+            _LOGGER.debug(event)
+
             if self.has_wake:
                 # Ready for next wake word detection
                 self.state = SatelliteState.WAKE
                 _LOGGER.info("Detecting wake word")
             else:
                 self.state = SatelliteState.VAD_RESET
-
-            # STT transcript
-            await self._forward_event(event)
-            _LOGGER.debug(event)
         elif self.has_snd and (
             AudioStart.is_type(event.type)
             or AudioChunk.is_type(event.type)
