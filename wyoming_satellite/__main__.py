@@ -40,6 +40,7 @@ class SatelliteState(str, Enum):
     ASR = "asr"
     VAD_RESET = "vad-reset"
     VAD_WAIT = "vad-wait"
+    PLAYING_AUDIO = "playing-audio"
 
 
 async def main() -> None:
@@ -291,6 +292,7 @@ class SatelliteEventHandler(AsyncEventHandler):
 
         self.is_running = True
         self.state: Optional[Satellite] = None
+        self.after_tts_state: Optional[Satellite] = None
         self.satellite_task: Optional[asyncio.Task] = None
 
         self.mic_volume_multiplier = self.cli_args.mic_volume_multiplier
@@ -337,6 +339,8 @@ class SatelliteEventHandler(AsyncEventHandler):
             return True
 
         if RunSatellite.is_type(event.type) and (self.satellite_task is None):
+            self.after_tts_state = None
+
             if self.has_wake:
                 # Local wake word detection
                 self.state = SatelliteState.WAKE
@@ -347,6 +351,7 @@ class SatelliteEventHandler(AsyncEventHandler):
                 self.satellite_task = asyncio.create_task(self.run_satellite())
         elif Transcript.is_type(event.type):
             if self.cli_args.done_wav:
+                self.state = SatelliteState.PLAYING_AUDIO
                 await self._play_wav(self.cli_args.done_wav)
 
             if self.has_wake:
@@ -370,6 +375,10 @@ class SatelliteEventHandler(AsyncEventHandler):
                 if self.snd_client is not None:
                     await self.snd_client.connect()
 
+                    # State will be restored when audio ends
+                    self.after_tts_state = self.state
+                    self.state = SatelliteState.PLAYING_AUDIO
+
                 await self._forward_event(event)
                 _LOGGER.debug(event)
             elif AudioChunk.is_type(event.type) and (self.snd_client is not None):
@@ -384,15 +393,22 @@ class SatelliteEventHandler(AsyncEventHandler):
                 if self.snd_client is not None:
                     await self.snd_client.disconnect()
                     self.snd_client = None
+
+                if self.after_tts_state is not None:
+                    # Restore state after playing audio
+                    self.state = self.after_tts_state
+                    self.after_tts_state = None
         elif Detection.is_type(event.type):
             if self.cli_args.awake_wav:
+                last_state = self.state
+                self.state = SatelliteState.PLAYING_AUDIO
                 await self._play_wav(self.cli_args.awake_wav)
+                self.state = last_state
 
             await self._forward_event(event)
             _LOGGER.debug(event)
         elif (
             Detect.is_type(event.type)
-            or Detection.is_type(event.type)
             or Transcribe.is_type(event.type)
             or VoiceStarted.is_type(event.type)
             or VoiceStopped.is_type(event.type)
@@ -484,10 +500,10 @@ class SatelliteEventHandler(AsyncEventHandler):
                         # Forward all audio to server
                         await self.write_event(mic_event)
 
-        except Exception:
-            _LOGGER.exception("Unexpected error in run_satellite")
         except ConnectionResetError:
             _LOGGER.info("Server disconnected")
+        except Exception:
+            _LOGGER.exception("Unexpected error in run_satellite")
 
     async def run_satellite_wake(self) -> None:
         """Task to read mic input and do local wake word detection."""
@@ -562,6 +578,11 @@ class SatelliteEventHandler(AsyncEventHandler):
                             self.state == SatelliteState.WAKE
                         ):
                             _LOGGER.debug("Wake word detected: %s", wake_event)
+
+                            if self.cli_args.awake_wav:
+                                self.state = SatelliteState.PLAYING_AUDIO
+                                await self._play_wav(self.cli_args.awake_wav)
+
                             self.state = SatelliteState.ASR
 
                             # Start pipeline
@@ -578,10 +599,10 @@ class SatelliteEventHandler(AsyncEventHandler):
                         # Next wake event
                         wake_task = asyncio.create_task(wake_client.read_event())
                         pending.add(wake_task)
-        except Exception:
-            _LOGGER.exception("Unexpected error in run_satellite")
         except ConnectionResetError:
             _LOGGER.info("Server disconnected")
+        except Exception:
+            _LOGGER.exception("Unexpected error in run_satellite")
 
     # -------------------------------------------------------------------------
 
