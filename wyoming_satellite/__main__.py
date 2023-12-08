@@ -44,6 +44,10 @@ class SatelliteState(str, Enum):
     PLAYING_AUDIO = "playing-audio"
 
 
+class ServerState:
+    current_client_id: Optional[str] = None
+
+
 async def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser()
@@ -134,7 +138,13 @@ async def main() -> None:
     )
     parser.add_argument("--vad-threshold", type=float, default=0.5)
     parser.add_argument("--vad-trigger-level", type=int, default=1)
-    parser.add_argument("--vad-buffer-seconds", type=float, default=0.5)
+    parser.add_argument("--vad-buffer-seconds", type=float, default=2)
+    parser.add_argument(
+        "--vad-wake-word-timeout",
+        type=float,
+        default=5.0,
+        help="Seconds before going back to waiting for speech when wake word isn't detected",
+    )
 
     # Audio enhancement (requires webrtc-noise-audio)
     parser.add_argument(
@@ -268,6 +278,7 @@ async def main() -> None:
 
     # Start server
     server = AsyncServer.from_uri(args.uri)
+    server_state = ServerState()
 
     if (not args.no_zeroconf) and isinstance(server, AsyncTcpServer):
         from wyoming.zeroconf import register_server
@@ -288,7 +299,9 @@ async def main() -> None:
         )
 
     try:
-        await server.run(partial(SatelliteEventHandler, wyoming_info, args))
+        await server.run(
+            partial(SatelliteEventHandler, wyoming_info, server_state, args)
+        )
     except KeyboardInterrupt:
         pass
 
@@ -302,6 +315,7 @@ class SatelliteEventHandler(AsyncEventHandler):
     def __init__(
         self,
         wyoming_info: Info,
+        server_state: ServerState,
         cli_args: argparse.Namespace,
         *args,
         **kwargs,
@@ -349,7 +363,20 @@ class SatelliteEventHandler(AsyncEventHandler):
 
         self.events_client: Optional[AsyncClient] = None
 
+        self.server_state = server_state
+        self.server_state.current_client_id = self.client_id
         _LOGGER.debug("Client connected: %s", self.client_id)
+
+        self._stop_if_new_client_task = asyncio.create_task(self._stop_if_new_client())
+
+    async def _stop_if_new_client(self) -> None:
+        """Stop this event handler if a new client connects."""
+        while self.is_running:
+            if self.server_state.current_client_id != self.client_id:
+                self.is_running = False
+                _LOGGER.debug("Detected new client. Stopping old client.")
+            else:
+                await asyncio.sleep(1)
 
     # -------------------------------------------------------------------------
 
@@ -457,6 +484,8 @@ class SatelliteEventHandler(AsyncEventHandler):
 
     async def run_satellite(self) -> None:
         """Task to read mic input and do remote wake word detection."""
+        vad_timeout_sec: Optional[float] = None
+
         try:
             mic_client = self._make_mic_client()
             async with mic_client:
@@ -496,7 +525,7 @@ class SatelliteEventHandler(AsyncEventHandler):
                             chunk = AudioChunk.from_event(mic_event)
                             if self.process_vad(chunk.audio):
                                 # Ready to stream
-                                self.state = SatelliteState.ASR
+                                self.state = SatelliteState.WAKE
 
                                 # Start pipeline
                                 await self._run_pipeline(PipelineStage.WAKE)
@@ -512,12 +541,43 @@ class SatelliteEventHandler(AsyncEventHandler):
                                         ).event()
                                     )
 
+                                if self.cli_args.vad_wake_word_timeout is not None:
+                                    # Time in the future when timeout will occur
+                                    vad_timeout_sec = (
+                                        time.monotonic()
+                                        + self.cli_args.vad_wake_word_timeout
+                                    )
+                                else:
+                                    # No timeout
+                                    vad_timeout_sec = None
+
                                 _LOGGER.info("Streaming audio")
                             elif self.vad_buffer is not None:
                                 # Save audio right before speech
                                 self.vad_buffer.put(chunk.audio)
 
-                    if self.state == SatelliteState.ASR:
+                    if self.state == SatelliteState.WAKE:
+                        if (vad_timeout_sec is not None) and (
+                            time.monotonic() >= vad_timeout_sec
+                        ):
+                            # Wake word was not detected within timeout
+                            self.state = SatelliteState.VAD_RESET
+
+                            # Cancel current pipeline with empty audio chunk
+                            chunk = AudioChunk.from_event(mic_event)
+                            await self.write_event(
+                                AudioChunk(
+                                    rate=chunk.rate,
+                                    width=chunk.width,
+                                    channels=chunk.channels,
+                                    audio=bytes(),
+                                ).event()
+                            )
+                            continue
+
+                        # Remote wake word detection
+                        await self.write_event(mic_event)
+                    elif self.state == SatelliteState.ASR:
                         # Forward all audio to server
                         await self.write_event(mic_event)
 
