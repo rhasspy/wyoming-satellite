@@ -904,6 +904,7 @@ class SileroVad:
         if audio_bytes is None:
             # Reset
             self._activation = 0
+            self.detector.reset()
             return False
 
         if self.detector(audio_bytes) >= self.threshold:
