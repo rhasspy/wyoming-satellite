@@ -1,6 +1,11 @@
 """Utilities for Wyoming satellite."""
 import array
-from typing import Iterable
+import asyncio
+import logging
+import shlex
+from typing import Iterable, List, Optional
+
+_LOGGER = logging.getLogger()
 
 
 class AudioBuffer:
@@ -87,3 +92,24 @@ def chunk_samples(
     # Capture leftover chunks
     if rest_samples := samples[next_chunk_idx:]:
         leftover_chunk_buffer.append(rest_samples)
+
+
+async def run_event_command(
+    command: Optional[List[str]], command_input: Optional[str] = None
+) -> None:
+    """Run a custom event command with optional input."""
+    if not command:
+        return
+
+    _LOGGER.debug("Running %s", command)
+    program, *program_args = command
+    proc = await asyncio.create_subprocess_exec(
+        program, *program_args, stdin=asyncio.subprocess.PIPE
+    )
+    assert proc.stdin is not None
+
+    if command_input:
+        await proc.communicate(input=command_input.encode("utf-8"))
+    else:
+        proc.stdin.close()
+        await proc.wait()
