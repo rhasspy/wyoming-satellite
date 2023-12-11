@@ -3,20 +3,22 @@ import asyncio
 import logging
 import math
 import time
-from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
-from typing import Callable, List, Optional, Set, Union
+from typing import Callable, Optional, Set, Union
 
 from pyring_buffer import RingBuffer
 from wyoming.asr import Transcript
 from wyoming.audio import AudioChunk, AudioStart, AudioStop
-from wyoming.client import AsyncClient, AsyncTcpClient
-from wyoming.event import Event, async_read_event, async_write_event
+from wyoming.client import AsyncClient
+from wyoming.error import Error
+from wyoming.event import Event, async_write_event
 from wyoming.mic import MicProcessAsyncClient
 from wyoming.pipeline import PipelineStage, RunPipeline
 from wyoming.satellite import RunSatellite
 from wyoming.snd import SndProcessAsyncClient
+from wyoming.tts import Synthesize
+from wyoming.vad import VoiceStarted, VoiceStopped
 from wyoming.wake import Detect, Detection, WakeProcessAsyncClient
 
 from .settings import SatelliteSettings
@@ -53,6 +55,8 @@ class SatelliteBase:
         self._snd_queue: "Optional[asyncio.Queue[Event]]" = None
         self._wake_task: Optional[asyncio.Task] = None
         self._wake_queue: "Optional[asyncio.Queue[Event]]" = None
+        self._event_task: Optional[asyncio.Task] = None
+        self._event_queue: "Optional[asyncio.Queue[Event]]" = None
 
     @property
     def is_running(self) -> bool:
@@ -121,31 +125,45 @@ class SatelliteBase:
 
     async def event_from_server(self, event: Event) -> None:
         """Called when an event is received from the server."""
-        if RunSatellite.is_type(event.type):
-            if self.settings.wake.enabled:
-                # Local wake word detection
-                start_stage = PipelineStage.ASR
-            else:
-                # Remote wake word detection
-                start_stage = PipelineStage.WAKE
-
-            if self.settings.snd.enabled:
-                # Play TTS response
-                end_stage = PipelineStage.TTS
-            else:
-                # No audio output
-                end_stage = PipelineStage.INTENT
-
-            await self.event_to_server(
-                RunPipeline(start_stage=start_stage, end_stage=end_stage).event()
-            )
-        elif (
-            AudioChunk.is_type(event.type)
-            or AudioStart.is_type(event.type)
-            or AudioStop.is_type(event.type)
-        ):
-            # Forward to sound service
+        if AudioChunk.is_type(event.type):
+            # TTS audio
             await self.event_to_snd(event)
+        elif AudioStart.is_type(event.type):
+            # TTS started
+            await self.event_to_snd(event)
+            await self.trigger_tts_start()
+        elif AudioStop.is_type(event.type):
+            # TTS stopped
+            await self.event_to_snd(event)
+            await self.trigger_tts_stop()
+        elif Detect.is_type(event.type):
+            # Wake word detection started
+            await self.trigger_detect()
+        elif Detection.is_type(event.type):
+            # Wake word detected
+            _LOGGER.debug("Wake word detected")
+            await self.trigger_detection(Detection.from_event(event))
+        elif VoiceStarted.is_type(event.type):
+            # STT start
+            await self.trigger_stt_start()
+        elif VoiceStopped.is_type(event.type):
+            # STT stop
+            await self.trigger_stt_stop()
+        elif Transcript.is_type(event.type):
+            # STT text
+            _LOGGER.debug(event)
+            await self.trigger_transcript(Transcript.from_event(event))
+        elif Synthesize.is_type(event.type):
+            # TTS request
+            _LOGGER.debug(event)
+            await self.trigger_synthesize(Synthesize.from_event(event))
+        elif Error.is_type(event.type):
+            _LOGGER.warning(event)
+            await self.trigger_error(Error.from_event(event))
+
+        # Forward everything except audio to event service
+        if not AudioChunk.is_type(event.type):
+            await self.forward_event(event)
 
     async def event_to_server(self, event: Event) -> None:
         """Send an event to the server."""
@@ -154,10 +172,24 @@ class SatelliteBase:
 
         await async_write_event(event, self._writer)
 
-    async def event_to_snd(self, event: Event) -> None:
-        """Send an event to the sound service."""
-        if self._snd_queue is not None:
-            self._snd_queue.put_nowait(event)
+    async def _send_run_pipeline(self) -> None:
+        if self.settings.wake.enabled:
+            # Local wake word detection
+            start_stage = PipelineStage.ASR
+        else:
+            # Remote wake word detection
+            start_stage = PipelineStage.WAKE
+
+        if self.settings.snd.enabled:
+            # Play TTS response
+            end_stage = PipelineStage.TTS
+        else:
+            # No audio output
+            end_stage = PipelineStage.INTENT
+
+        run_pipeline = RunPipeline(start_stage=start_stage, end_stage=end_stage).event()
+        await self.event_to_server(run_pipeline)
+        await self.forward_event(run_pipeline)
 
     async def _restart(self) -> None:
         self.state = State.RESTARTING
@@ -189,18 +221,35 @@ class SatelliteBase:
             )
             self._wake_task = asyncio.create_task(self._wake_task_proc())
 
+        if self.settings.event.enabled:
+            _LOGGER.debug(
+                "Connecting to event service: %s",
+                self.settings.event.uri or self.settings.event.command,
+            )
+            self._event_task = asyncio.create_task(self._event_task_proc())
+
         _LOGGER.info("Connected to services")
 
     async def _disconnect_from_services(self) -> None:
         if self._mic_task is not None:
-            _LOGGER.debug("Stopping microphone")
+            _LOGGER.debug("Stopping microphone service")
             self._mic_task.cancel()
             self._mic_task = None
 
         if self._snd_task is not None:
-            _LOGGER.debug("Stopping sound")
+            _LOGGER.debug("Stopping sound service")
             self._snd_task.cancel()
             self._snd_task = None
+
+        if self._wake_task is not None:
+            _LOGGER.debug("Stopping wake service")
+            self._wake_task.cancel()
+            self._wake_task = None
+
+        if self._event_task is not None:
+            _LOGGER.debug("Stopping event service")
+            self._event_task.cancel()
+            self._event_task = None
 
         _LOGGER.debug("Disconnected from services")
 
@@ -303,6 +352,11 @@ class SatelliteBase:
     # -------------------------------------------------------------------------
     # Sound
     # -------------------------------------------------------------------------
+
+    async def event_to_snd(self, event: Event) -> None:
+        """Send an event to the sound service."""
+        if self._snd_queue is not None:
+            self._snd_queue.put_nowait(event)
 
     def _make_snd_client(self) -> Optional[AsyncClient]:
         if self.settings.snd.command:
@@ -499,6 +553,70 @@ class SatelliteBase:
         await run_event_command(self.settings.event.transcript, transcript.text)
         await self._play_wav(self.settings.snd.done_wav)
 
+    async def trigger_stt_start(self) -> None:
+        await run_event_command(self.settings.event.stt_start)
+
+    async def trigger_stt_stop(self) -> None:
+        await run_event_command(self.settings.event.stt_stop)
+
+    async def trigger_synthesize(self, synthesize: Synthesize) -> None:
+        await run_event_command(self.settings.event.synthesize, synthesize.text)
+
+    async def trigger_tts_start(self) -> None:
+        await run_event_command(self.settings.event.tts_start)
+
+    async def trigger_tts_stop(self) -> None:
+        await run_event_command(self.settings.event.tts_stop)
+
+    async def trigger_error(self, error: Error) -> None:
+        await run_event_command(self.settings.event.error, error.text)
+
+    async def forward_event(self, event: Event) -> None:
+        """Forward an event to the event service."""
+        if self._event_queue is not None:
+            self._event_queue.put_nowait(event)
+
+    def _make_event_client(self) -> Optional[AsyncClient]:
+        if self.settings.event.uri:
+            return AsyncClient.from_uri(self.settings.event.uri)
+
+        return None
+
+    async def _event_task_proc(self) -> None:
+        event_client: Optional[AsyncClient] = None
+
+        async def _disconnect() -> None:
+            try:
+                if event_client is not None:
+                    await event_client.disconnect()
+            except Exception:
+                pass  # ignore disconnect errors
+
+        while self.is_running:
+            try:
+                if self._event_queue is None:
+                    self._event_queue = asyncio.Queue()
+
+                event = await self._event_queue.get()
+
+                if event_client is None:
+                    event_client = self._make_event_client()
+                    assert event_client is not None
+                    await event_client.connect()
+                    _LOGGER.debug("Connected to event service")
+
+                await event_client.write_event(event)
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                _LOGGER.exception("Unexpected error in event read task")
+                await _disconnect()
+                event_client = None  # reconnect
+                self._event_queue = None
+                await asyncio.sleep(self.settings.event.reconnect_seconds)
+
+        await _disconnect()
+
 
 # -----------------------------------------------------------------------------
 
@@ -516,15 +634,8 @@ class AlwaysStreamingSatellite(SatelliteBase):
         if RunSatellite.is_type(event.type):
             self.is_streaming = True
             _LOGGER.info("Streaming audio")
+            await self._send_run_pipeline()
             await self.trigger_streaming_start()
-        elif Detect.is_type(event.type):
-            await self.trigger_detect()
-        elif Detection.is_type(event.type):
-            _LOGGER.debug("Wake word detected")
-            await self.trigger_detection(Detection.from_event(event))
-        elif Transcript.is_type(event.type):
-            _LOGGER.debug(event)
-            await self.trigger_transcript(Transcript.from_event(event))
 
     async def event_from_mic(
         self, event: Event, audio_bytes: Optional[bytes] = None
@@ -565,14 +676,6 @@ class VadStreamingSatellite(SatelliteBase):
 
         if RunSatellite.is_type(event.type):
             _LOGGER.info("Waiting for speech")
-        elif Detect.is_type(event.type):
-            await self.trigger_detect()
-        elif Detection.is_type(event.type):
-            _LOGGER.debug("Wake word detected")
-            await self.trigger_detection(Detection.from_event(event))
-        elif Transcript.is_type(event.type):
-            _LOGGER.debug(event)
-            await self.trigger_transcript(Transcript.from_event(event))
 
     async def event_from_mic(
         self, event: Event, audio_bytes: Optional[bytes] = None
@@ -612,6 +715,7 @@ class VadStreamingSatellite(SatelliteBase):
             # Speech detected
             self.is_streaming = True
             _LOGGER.info("Streaming audio")
+            await self._send_run_pipeline()
             await self.trigger_streaming_start()
 
             if self.settings.vad.wake_word_timeout is not None:
@@ -666,9 +770,7 @@ class WakeStreamingSatellite(SatelliteBase):
             _LOGGER.info("Waiting for wake word")
 
             if Transcript.is_type(event.type):
-                _LOGGER.debug(event)
                 await self.trigger_streaming_stop()
-                await self.trigger_transcript(Transcript.from_event(event))
 
     async def event_from_mic(
         self, event: Event, audio_bytes: Optional[bytes] = None
@@ -690,5 +792,6 @@ class WakeStreamingSatellite(SatelliteBase):
         if Detection.is_type(event.type):
             self.is_streaming = True
             _LOGGER.debug("Streaming audio")
+            await self._send_run_pipeline()
             await self.trigger_detection(Detection.from_event(event))
             await self.trigger_streaming_start()

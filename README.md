@@ -130,10 +130,10 @@ You can also use `--mic-volume-multiplier X` to multiply all audio samples by `X
 
 Satellites can respond to events from the server by running commands:
 
-* `--startup-command` - run when satellite starts
+* `--startup-command` - run when satellite starts (no stdin)
 * `--detect-command` - wake word detection has started, but not detected yet (no stdin)
-* `--streaming-start-command` - audio has started streaming to server
-* `--streaming-stop-command` - audio has stopped streaming to server
+* `--streaming-start-command` - audio has started streaming to server (no stdin)
+* `--streaming-stop-command` - audio has stopped streaming to server (no stdin)
 * `--detection-command` - wake word is detected (wake word name on stdin)
 * `--transcript-command` - speech-to-text transcript is returned (text on stdin)
 * `--stt-start-command` - user started speaking (no stdin)
