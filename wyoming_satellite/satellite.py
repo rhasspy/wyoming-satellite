@@ -703,6 +703,7 @@ class VadStreamingSatellite(SatelliteBase):
 
         if not self.is_streaming:
             # Check VAD
+            chunk: Optional[AudioChunk] = None
             if audio_bytes is None:
                 # Need to unpack
                 chunk = AudioChunk.from_event(event)
@@ -730,6 +731,9 @@ class VadStreamingSatellite(SatelliteBase):
 
             if self.vad_buffer is not None:
                 # Send contents of VAD buffer first
+                if chunk is None:
+                    chunk = AudioChunk.from_event(event)
+
                 await self.event_to_server(
                     AudioChunk(
                         rate=chunk.rate,
