@@ -636,6 +636,9 @@ class AlwaysStreamingSatellite(SatelliteBase):
             _LOGGER.info("Streaming audio")
             await self._send_run_pipeline()
             await self.trigger_streaming_start()
+        elif Transcript.is_type(event.type):
+            _LOGGER.info("Streaming audio")
+            await self.trigger_streaming_start()
 
     async def event_from_mic(
         self, event: Event, audio_bytes: Optional[bytes] = None
