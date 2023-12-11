@@ -4,13 +4,11 @@ import asyncio
 import logging
 import time
 from functools import partial
-from pathlib import Path
 
 from wyoming.event import Event
 from wyoming.server import AsyncEventHandler, AsyncServer
 
 _LOGGER = logging.getLogger()
-_DIR = Path(__file__).parent
 
 
 async def main() -> None:
@@ -51,8 +49,6 @@ class ExampleEventHandler(AsyncEventHandler):
 
         self.cli_args = cli_args
         self.client_id = str(time.monotonic_ns())
-
-        self.is_running = True
 
         _LOGGER.debug("Client connected: %s", self.client_id)
 

@@ -15,7 +15,7 @@ from wyoming.error import Error
 from wyoming.event import Event, async_write_event
 from wyoming.mic import MicProcessAsyncClient
 from wyoming.pipeline import PipelineStage, RunPipeline
-from wyoming.satellite import RunSatellite
+from wyoming.satellite import RunSatellite, StreamingStarted, StreamingStopped
 from wyoming.snd import SndProcessAsyncClient
 from wyoming.tts import Synthesize
 from wyoming.vad import VoiceStarted, VoiceStopped
@@ -538,9 +538,11 @@ class SatelliteBase:
 
     async def trigger_streaming_start(self) -> None:
         await run_event_command(self.settings.event.streaming_start)
+        await self.forward_event(StreamingStarted().event())
 
     async def trigger_streaming_stop(self) -> None:
         await run_event_command(self.settings.event.streaming_stop)
+        await self.forward_event(StreamingStopped().event())
 
     async def trigger_detect(self) -> None:
         await run_event_command(self.settings.event.detect)
