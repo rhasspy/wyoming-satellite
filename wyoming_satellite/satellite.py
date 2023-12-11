@@ -170,7 +170,11 @@ class SatelliteBase:
         if self._writer is None:
             return
 
-        await async_write_event(event, self._writer)
+        try:
+            await async_write_event(event, self._writer)
+        except Exception:
+            _LOGGER.exception("Unexpected error sending event to server")
+            self._writer = None
 
     async def _send_run_pipeline(self) -> None:
         if self.settings.wake.enabled:
