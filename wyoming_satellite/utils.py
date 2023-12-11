@@ -2,8 +2,12 @@
 import array
 import asyncio
 import logging
-import shlex
-from typing import Iterable, List, Optional
+import wave
+from pathlib import Path
+from typing import Iterable, Iterator, List, Optional, Union
+
+from wyoming.audio import AudioChunk, AudioStart, AudioStop
+from wyoming.event import Event
 
 _LOGGER = logging.getLogger()
 
@@ -113,3 +117,38 @@ async def run_event_command(
     else:
         proc.stdin.close()
         await proc.wait()
+
+
+def wav_to_events(
+    wav_path: Union[str, Path],
+    samples_per_chunk: int = 1024,
+    volume_multiplier: float = 1.0,
+) -> Iterator[Event]:
+    """Load WAV audio for playback on an event (wake/done)."""
+    with wave.open(str(wav_path), "rb") as wav_file:
+        rate = wav_file.getframerate()
+        width = wav_file.getsampwidth()
+        channels = wav_file.getnchannels()
+
+        timestamp = 0
+        yield AudioStart(
+            rate=rate, width=width, channels=channels, timestamp=timestamp
+        ).event()
+
+        audio_bytes = wav_file.readframes(samples_per_chunk)
+        while audio_bytes:
+            if volume_multiplier != 1.0:
+                audio_bytes = multiply_volume(audio_bytes, volume_multiplier)
+
+            chunk = AudioChunk(
+                rate=rate,
+                width=width,
+                channels=channels,
+                audio=audio_bytes,
+                timestamp=timestamp,
+            )
+            yield chunk.event()
+            timestamp += int(chunk.seconds * 1000)
+            audio_bytes = wav_file.readframes(samples_per_chunk)
+
+        yield AudioStop(timestamp=timestamp).event()

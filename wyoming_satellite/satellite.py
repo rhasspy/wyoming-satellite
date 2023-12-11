@@ -5,7 +5,8 @@ import math
 import time
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import List, Optional, Set
+from pathlib import Path
+from typing import Callable, List, Optional, Set, Union
 
 from pyring_buffer import RingBuffer
 from wyoming.asr import Transcript
@@ -19,8 +20,9 @@ from wyoming.snd import SndProcessAsyncClient
 from wyoming.wake import Detect, Detection, WakeProcessAsyncClient
 
 from .settings import SatelliteSettings
-from .utils import run_event_command
+from .utils import multiply_volume, run_event_command, wav_to_events
 from .vad import SileroVad
+from .webrtc import WebRtcAudio
 
 _LOGGER = logging.getLogger()
 
@@ -46,6 +48,7 @@ class SatelliteBase:
         self._writer: Optional[asyncio.StreamWriter] = None
 
         self._mic_task: Optional[asyncio.Task] = None
+        self._mic_webrtc: Optional[Callable[[bytes], bytes]] = None
         self._snd_task: Optional[asyncio.Task] = None
         self._snd_queue: "Optional[asyncio.Queue[Event]]" = None
         self._wake_task: Optional[asyncio.Task] = None
@@ -229,6 +232,13 @@ class SatelliteBase:
 
     async def _mic_task_proc(self) -> None:
         mic_client: Optional[AsyncClient] = None
+        audio_bytes: Optional[bytes] = None
+
+        if self.settings.mic.needs_webrtc and (self._mic_webrtc is None):
+            _LOGGER.debug("Using webrtc audio enhancements")
+            self._mic_webrtc = WebRtcAudio(
+                self.settings.mic.auto_gain, self.settings.mic.noise_suppression
+            )
 
         async def _disconnect() -> None:
             try:
@@ -253,9 +263,22 @@ class SatelliteBase:
                     await asyncio.sleep(self.settings.mic.reconnect_seconds)
                     continue
 
-                # TODO: audio processing
+                # Audio processing
+                if self.settings.mic.needs_processing and AudioChunk.is_type(
+                    event.type
+                ):
+                    chunk = AudioChunk.from_event(event)
+                    audio_bytes = self._process_mic_audio(chunk.audio)
+                    event = AudioChunk(
+                        rate=chunk.rate,
+                        width=chunk.width,
+                        channels=chunk.channels,
+                        audio=audio_bytes,
+                    ).event()
+                else:
+                    audio_bytes = None
 
-                await self.event_from_mic(event)
+                await self.event_from_mic(event, audio_bytes)
             except asyncio.CancelledError:
                 break
             except Exception:
@@ -265,6 +288,17 @@ class SatelliteBase:
                 await asyncio.sleep(self.settings.mic.reconnect_seconds)
 
         await _disconnect()
+
+    def _process_mic_audio(self, audio_bytes: bytes) -> bytes:
+        if self.settings.mic.volume_multiplier != 1.0:
+            audio_bytes = multiply_volume(
+                audio_bytes, self.settings.mic.volume_multiplier
+            )
+
+        if self._mic_webrtc is not None:
+            audio_bytes = self._mic_webrtc(audio_bytes)
+
+        return audio_bytes
 
     # -------------------------------------------------------------------------
     # Sound
@@ -322,6 +356,18 @@ class SatelliteBase:
                 await asyncio.sleep(self.settings.snd.reconnect_seconds)
 
         await _disconnect()
+
+    async def _play_wav(self, wav_path: Optional[Union[str, Path]]) -> None:
+        """Send WAV as events to sound service."""
+        if (not wav_path) or (not self.settings.snd.enabled):
+            return
+
+        for event in wav_to_events(
+            wav_path,
+            samples_per_chunk=self.settings.snd.samples_per_chunk,
+            volume_multiplier=self.settings.snd.volume_multiplier,
+        ):
+            await self.event_to_snd(event)
 
     # -------------------------------------------------------------------------
     # Wake
@@ -430,16 +476,28 @@ class SatelliteBase:
     async def _send_wake_detect(self) -> None:
         """Inform wake word service of which wake words to detect."""
         await self.event_to_wake(Detect(names=self.settings.wake.names).event())
+        await self.trigger_detect()
 
     # -------------------------------------------------------------------------
     # Events
     # -------------------------------------------------------------------------
 
-    async def event_streaming_start(self) -> None:
+    async def trigger_streaming_start(self) -> None:
         await run_event_command(self.settings.event.streaming_start)
 
-    async def event_streaming_stop(self) -> None:
-        pass
+    async def trigger_streaming_stop(self) -> None:
+        await run_event_command(self.settings.event.streaming_stop)
+
+    async def trigger_detect(self) -> None:
+        await run_event_command(self.settings.event.detect)
+
+    async def trigger_detection(self, detection: Detection) -> None:
+        await run_event_command(self.settings.event.detection, detection.name)
+        await self._play_wav(self.settings.snd.awake_wav)
+
+    async def trigger_transcript(self, transcript: Transcript) -> None:
+        await run_event_command(self.settings.event.transcript, transcript.text)
+        await self._play_wav(self.settings.snd.done_wav)
 
 
 # -----------------------------------------------------------------------------
@@ -458,7 +516,15 @@ class AlwaysStreamingSatellite(SatelliteBase):
         if RunSatellite.is_type(event.type):
             self.is_streaming = True
             _LOGGER.info("Streaming audio")
-            await self.event_streaming_start()
+            await self.trigger_streaming_start()
+        elif Detect.is_type(event.type):
+            await self.trigger_detect()
+        elif Detection.is_type(event.type):
+            _LOGGER.debug("Wake word detected")
+            await self.trigger_detection(Detection.from_event(event))
+        elif Transcript.is_type(event.type):
+            _LOGGER.debug(event)
+            await self.trigger_transcript(Transcript.from_event(event))
 
     async def event_from_mic(
         self, event: Event, audio_bytes: Optional[bytes] = None
@@ -499,6 +565,14 @@ class VadStreamingSatellite(SatelliteBase):
 
         if RunSatellite.is_type(event.type):
             _LOGGER.info("Waiting for speech")
+        elif Detect.is_type(event.type):
+            await self.trigger_detect()
+        elif Detection.is_type(event.type):
+            _LOGGER.debug("Wake word detected")
+            await self.trigger_detection(Detection.from_event(event))
+        elif Transcript.is_type(event.type):
+            _LOGGER.debug(event)
+            await self.trigger_transcript(Transcript.from_event(event))
 
     async def event_from_mic(
         self, event: Event, audio_bytes: Optional[bytes] = None
@@ -519,7 +593,7 @@ class VadStreamingSatellite(SatelliteBase):
             await self.event_to_server(AudioStop().event())
 
             _LOGGER.info("Waiting for speech")
-            await self.event_streaming_stop()
+            await self.trigger_streaming_stop()
 
         if not self.is_streaming:
             # Check VAD
@@ -538,7 +612,7 @@ class VadStreamingSatellite(SatelliteBase):
             # Speech detected
             self.is_streaming = True
             _LOGGER.info("Streaming audio")
-            await self.event_streaming_start()
+            await self.trigger_streaming_start()
 
             if self.settings.vad.wake_word_timeout is not None:
                 self.timeout_seconds = (
@@ -592,7 +666,9 @@ class WakeStreamingSatellite(SatelliteBase):
             _LOGGER.info("Waiting for wake word")
 
             if Transcript.is_type(event.type):
-                await self.event_streaming_stop()
+                _LOGGER.debug(event)
+                await self.trigger_streaming_stop()
+                await self.trigger_transcript(Transcript.from_event(event))
 
     async def event_from_mic(
         self, event: Event, audio_bytes: Optional[bytes] = None
@@ -614,4 +690,5 @@ class WakeStreamingSatellite(SatelliteBase):
         if Detection.is_type(event.type):
             self.is_streaming = True
             _LOGGER.debug("Streaming audio")
-            await self.event_streaming_start()
+            await self.trigger_detection(Detection.from_event(event))
+            await self.trigger_streaming_start()

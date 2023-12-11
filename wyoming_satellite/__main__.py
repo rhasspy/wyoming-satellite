@@ -11,7 +11,7 @@ import wave
 from enum import Enum
 from functools import partial
 from pathlib import Path
-from typing import Callable, Final, Iterator, Optional, Union
+from typing import Callable, Final, Iterator, List, Optional, Union
 
 from pyring_buffer import RingBuffer
 from wyoming.asr import Transcribe, Transcript
@@ -48,6 +48,8 @@ from .utils import AudioBuffer, chunk_samples, multiply_volume, run_event_comman
 _LOGGER = logging.getLogger()
 _DIR = Path(__file__).parent
 
+# TODO: events service
+
 
 async def main() -> None:
     """Main entry point."""
@@ -81,6 +83,10 @@ async def main() -> None:
         help="Sample per chunk for mic-command (default: 1024)",
     )
     parser.add_argument("--mic-volume-multiplier", type=float, default=1.0)
+    parser.add_argument(
+        "--mic-noise-suppression", type=int, default=0, choices=(0, 1, 2, 3, 4)
+    )
+    parser.add_argument("--mic-auto-gain", type=int, default=0, choices=list(range(32)))
 
     # Sound output
     parser.add_argument("--snd-uri", help="URI of Wyoming sound service")
@@ -147,12 +153,6 @@ async def main() -> None:
         help="Seconds before going back to waiting for speech when wake word isn't detected",
     )
 
-    # Audio enhancement (requires webrtc-noise-audio)
-    parser.add_argument(
-        "--noise-suppression", type=int, default=0, choices=(0, 1, 2, 3, 4)
-    )
-    parser.add_argument("--auto-gain", type=int, default=0, choices=list(range(32)))
-
     # External event handlers
     parser.add_argument(
         "--event-uri", help="URI of Wyoming service to forward events to"
@@ -193,6 +193,10 @@ async def main() -> None:
     parser.add_argument(
         "--streaming-start-command",
         help="Command to run when audio streaming starts",
+    )
+    parser.add_argument(
+        "--streaming-stop-command",
+        help="Command to run when audio streaming stops",
     )
     parser.add_argument(
         "--error-command",
@@ -272,7 +276,17 @@ async def main() -> None:
     )
 
     settings = SatelliteSettings(
-        mic=MicSettings(uri=args.mic_uri, command=_split(args.mic_command)),
+        mic=MicSettings(
+            uri=args.mic_uri,
+            command=_split(args.mic_command),
+            rate=args.mic_command_rate,
+            width=args.mic_command_width,
+            channels=args.mic_command_channels,
+            samples_per_chunk=args.mic_command_samples_per_chunk,
+            volume_multiplier=args.mic_volume_multiplier,
+            auto_gain=args.mic_auto_gain,
+            noise_suppression=args.mic_noise_suppression,
+        ),
         vad=VadSettings(
             enabled=args.vad,
             threshold=args.vad_threshold,
@@ -285,19 +299,43 @@ async def main() -> None:
             command=_split(args.wake_command),
             names=args.wake_word_name,
         ),
-        snd=SndSettings(uri=args.snd_uri, command=_split(args.snd_command)),
+        snd=SndSettings(
+            uri=args.snd_uri,
+            command=_split(args.snd_command),
+            rate=args.snd_command_rate,
+            width=args.snd_command_width,
+            channels=args.snd_command_channels,
+            volume_multiplier=args.snd_volume_multiplier,
+            awake_wav=args.awake_wav,
+            done_wav=args.done_wav,
+        ),
         event=EventSettings(
-            uri=args.event_uri, streaming_start=_split(args.streaming_start_command)
+            uri=args.event_uri,
+            startup=_split(args.startup_command),
+            streaming_start=_split(args.streaming_start_command),
+            streaming_stop=_split(args.streaming_stop_command),
+            detect=_split(args.detect_command),
+            detection=_split(args.detection_command),
+            transcript=_split(args.transcript_command),
+            stt_start=_split(args.stt_start_command),
+            stt_stop=_split(args.stt_stop_command),
+            synthesize=_split(args.synthesize_command),
+            tts_start=_split(args.tts_start_command),
+            tts_stop=_split(args.tts_stop_command),
+            error=_split(args.error_command),
         ),
     )
 
     satellite: SatelliteBase
 
     if settings.wake.enabled:
+        # Local wake word detection
         satellite = WakeStreamingSatellite(settings)
     elif settings.vad.enabled:
+        # Stream after speech
         satellite = VadStreamingSatellite(settings)
     else:
+        # Stream all the time
         satellite = AlwaysStreamingSatellite(settings)
 
     if args.startup_command:
@@ -949,7 +987,7 @@ def get_mac_address() -> str:
 
 def needs_webrtc(args: argparse.Namespace) -> bool:
     """Return True if webrtc must be used."""
-    return (args.noise_suppression > 0) or (args.auto_gain > 0)
+    return (args.mic_noise_suppression > 0) or (args.mic_auto_gain > 0)
 
 
 def needs_silero(args: argparse.Namespace) -> bool:
@@ -962,30 +1000,6 @@ def _split(command: Optional[str]) -> Optional[List[str]]:
         return None
 
     return shlex.split(command)
-
-
-class WebRtcAudio:
-    """Audio processing using webrtc."""
-
-    _sub_chunk_samples: Final = 160  # 10ms @ 16Khz
-    _sub_chunk_bytes: Final = _sub_chunk_samples * 2  # 16-bit
-
-    def __init__(self, auto_gain: int, noise_suppression: int) -> None:
-        from webrtc_noise_gain import AudioProcessor
-
-        self.audio_processor = AudioProcessor(auto_gain, noise_suppression)
-        self.audio_buffer = AudioBuffer(self._sub_chunk_bytes)
-
-    def __call__(self, audio_bytes: bytes) -> bytes:
-        """Process in 10ms chunks."""
-        clean_chunk = bytes()
-        for sub_chunk in chunk_samples(
-            audio_bytes, self._sub_chunk_bytes, self.audio_buffer
-        ):
-            result = self.audio_processor.Process10ms(sub_chunk)
-            clean_chunk += result.audio
-
-        return clean_chunk
 
 
 # -----------------------------------------------------------------------------

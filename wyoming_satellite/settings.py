@@ -42,6 +42,7 @@ class SndSettings(ServiceSettings):
     rate: int = 22050
     width: int = 2
     channels: int = 1
+    samples_per_chunk: int = 1024
 
     @property
     def needs_processing(self) -> bool:
@@ -67,7 +68,18 @@ class VadSettings:
 
 @dataclass(frozen=True)
 class EventSettings(ServiceSettings):
+    startup: Optional[List[str]] = None
     streaming_start: Optional[List[str]] = None
+    streaming_stop: Optional[List[str]] = None
+    detect: Optional[List[str]] = None
+    detection: Optional[List[str]] = None
+    transcript: Optional[List[str]] = None
+    stt_start: Optional[List[str]] = None
+    stt_stop: Optional[List[str]] = None
+    synthesize: Optional[List[str]] = None
+    tts_start: Optional[List[str]] = None
+    tts_stop: Optional[List[str]] = None
+    error: Optional[List[str]] = None
 
 
 @dataclass(frozen=True)

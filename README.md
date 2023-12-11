@@ -117,8 +117,8 @@ Run the satellite with automatic gain control and noise suppression:
 ``` sh
 script/run \
   ... \
-  --auto-gain 5 \
-  --noise-suppression 2
+  --mic-auto-gain 5 \
+  --mic-noise-suppression 2
 ```
 
 Automatic gain control is between 0-31, which 31 being the loudest.
@@ -133,6 +133,7 @@ Satellites can respond to events from the server by running commands:
 * `--startup-command` - run when satellite starts
 * `--detect-command` - wake word detection has started, but not detected yet (no stdin)
 * `--streaming-start-command` - audio has started streaming to server
+* `--streaming-stop-command` - audio has stopped streaming to server
 * `--detection-command` - wake word is detected (wake word name on stdin)
 * `--transcript-command` - speech-to-text transcript is returned (text on stdin)
 * `--stt-start-command` - user started speaking (no stdin)
