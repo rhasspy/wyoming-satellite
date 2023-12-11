@@ -322,7 +322,7 @@ async def main() -> None:
         satellite = AlwaysStreamingSatellite(settings)
 
     if args.startup_command:
-        await run_event_command(args.startup_command)
+        await run_event_command(_split(args.startup_command))
 
     _LOGGER.info("Ready")
 
