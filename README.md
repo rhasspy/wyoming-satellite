@@ -41,6 +41,10 @@ Audio will be continuously streamed to the server, where wake word detection, et
 
 ### Voice Activity Detection
 
+Rather than always streaming audio to Home Assistant, the satellite can wait until speech is detected.
+
+**NOTE:** This will not work on the 32-bit version of Raspberry Pi OS.
+
 Install the dependencies for silero VAD:
 
 ``` sh
