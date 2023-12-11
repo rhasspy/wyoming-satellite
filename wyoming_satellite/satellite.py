@@ -185,7 +185,7 @@ class SatelliteBase:
             end_stage = PipelineStage.TTS
         else:
             # No audio output
-            end_stage = PipelineStage.INTENT
+            end_stage = PipelineStage.HANDLE
 
         run_pipeline = RunPipeline(start_stage=start_stage, end_stage=end_stage).event()
         await self.event_to_server(run_pipeline)
