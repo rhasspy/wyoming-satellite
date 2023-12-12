@@ -195,8 +195,10 @@ async def main() -> None:
     )
 
     # Satellite details
-    parser.add_argument("--uri", default="stdio://", help="unix:// or tcp://")
-    parser.add_argument("--name", required=True, help="Name of the satellite")
+    parser.add_argument("--uri", required=True, help="unix:// or tcp://")
+    parser.add_argument(
+        "--name", default="Wyoming Satellite", help="Name of the satellite"
+    )
     parser.add_argument("--area", help="Area name of the satellite")
 
     # Zeroconf

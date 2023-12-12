@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Controls the LEDs on the ReSpeaker 2mic HAT."""
 import argparse
 import asyncio
 import logging
@@ -19,6 +20,7 @@ from wyoming.wake import Detection
 _LOGGER = logging.getLogger()
 
 NUM_LEDS = 3
+LEDS_GPIO = 12
 RGB_MAP = {
     "rgb": [3, 2, 1],
     "rbg": [3, 1, 2],
@@ -32,7 +34,7 @@ RGB_MAP = {
 async def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--uri", default="stdio://", help="unix:// or tcp://")
+    parser.add_argument("--uri", required=True, help="unix:// or tcp://")
     #
     parser.add_argument("--debug", action="store_true", help="Log DEBUG messages")
     args = parser.parse_args()
@@ -43,7 +45,7 @@ async def main() -> None:
     _LOGGER.info("Ready")
 
     # Turn on power to LEDs
-    led_power = gpiozero.LED(12, active_high=False)
+    led_power = gpiozero.LED(LEDS_GPIO, active_high=False)
     led_power.on()
 
     leds = APA102(num_led=NUM_LEDS)
