@@ -806,5 +806,6 @@ class WakeStreamingSatellite(SatelliteBase):
             self.is_streaming = True
             _LOGGER.debug("Streaming audio")
             await self._send_run_pipeline()
+            await self.forward_event(event)  # forward to event service
             await self.trigger_detection(Detection.from_event(event))
             await self.trigger_streaming_start()

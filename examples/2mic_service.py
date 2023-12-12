@@ -95,8 +95,9 @@ class LEDsEventHandler(AsyncEventHandler):
             self.color(_YELLOW)
         elif Detection.is_type(event.type):
             self.color(_BLUE)
+            await asyncio.sleep(1.0)  # show for 1 sec
         elif VoiceStarted.is_type(event.type):
-            self.color(_WHITE)
+            self.color(_YELLOW)
         elif Transcript.is_type(event.type):
             self.color(_GREEN)
             await asyncio.sleep(1.0)  # show for 1 sec
