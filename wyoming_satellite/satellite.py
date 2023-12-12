@@ -111,6 +111,13 @@ class SatelliteBase:
         """Set event writer."""
         self.server_id = server_id
         self._writer = writer
+        _LOGGER.debug("Server set: %s", server_id)
+
+    def clear_server(self) -> None:
+        """Remove writer."""
+        self.server_id = None
+        self._writer = None
+        _LOGGER.debug("Server disconnected")
 
     async def event_to_server(self, event: Event) -> None:
         """Send an event to the server."""
@@ -119,9 +126,13 @@ class SatelliteBase:
 
         try:
             await async_write_event(event, self._writer)
-        except Exception:
-            _LOGGER.exception("Unexpected error sending event to server")
-            self._writer = None
+        except Exception as err:
+            self.clear_server()
+
+            if isinstance(err, ConnectionResetError):
+                _LOGGER.warning("Server disconnected unexpectedly")
+            else:
+                _LOGGER.exception("Unexpected error sending event to server")
 
     # -------------------------------------------------------------------------
 
@@ -442,6 +453,12 @@ class SatelliteBase:
                     ).event()
 
                 await snd_client.write_event(event)
+
+                if self.settings.snd.disconnect_after_stop and AudioStop.is_type(
+                    event.type
+                ):
+                    await _disconnect()
+                    snd_client = None  # reconnect on next event
             except asyncio.CancelledError:
                 break
             except Exception:

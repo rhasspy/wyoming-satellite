@@ -381,25 +381,30 @@ class SatelliteEventHandler(AsyncEventHandler):
         self.client_id = str(time.monotonic_ns())
         self.satellite = satellite
 
-        _LOGGER.debug("Client connected: %s", self.client_id)
-        self.satellite.set_server(self.client_id, self.writer)
-
     # -------------------------------------------------------------------------
 
     async def handle_event(self, event: Event) -> bool:
         """Handle events from the server."""
-        if self.satellite.server_id != self.client_id:
-            # New connection
-            return False
-
         if Describe.is_type(event.type):
             await self.write_event(self.wyoming_info_event)
-            _LOGGER.debug("Sent info to client: %s", self.client_id)
             return True
+
+        if self.satellite.server_id is None:
+            # Take over after a problem occurred
+            self.satellite.set_server(self.client_id, self.writer)
+        elif self.satellite.server_id != self.client_id:
+            # New connection
+            _LOGGER.debug("Connection cancelled: %s", self.client_id)
+            return False
 
         await self.satellite.event_from_server(event)
 
         return True
+
+    async def disconnect(self) -> None:
+        """Server disconnect."""
+        if self.satellite.server_id == self.client_id:
+            self.satellite.clear_server()
 
 
 # -----------------------------------------------------------------------------
