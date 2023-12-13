@@ -877,12 +877,12 @@ class WakeStreamingSatellite(SatelliteBase):
             # Stop streaming before event_from_server is called because it will
             # play the "done" WAV.
             self.is_streaming = False
-            await self.trigger_streaming_stop()
 
         await super().event_from_server(event)
 
         if RunSatellite.is_type(event.type) or Transcript.is_type(event.type):
             self.is_streaming = False
+            await self.trigger_streaming_stop()
             await self._send_wake_detect()
             _LOGGER.info("Waiting for wake word")
 
