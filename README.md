@@ -125,7 +125,7 @@ script/run \
   --mic-noise-suppression 2
 ```
 
-Automatic gain control is between 0-31, which 31 being the loudest.
+Automatic gain control is between 0-31 dbFS, which 31 being the loudest.
 Noise suppression is from 0-4, with 4 being maximum suppression (may cause audio distortion).
 
 You can also use `--mic-volume-multiplier X` to multiply all audio samples by `X`. For example, using 2 for `X` will double the microphone volume (but may cause audio distortion). The corresponding `--snd-volume-multiplier` does the same for audio playback.
