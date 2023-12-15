@@ -1,6 +1,17 @@
 # Wyoming Satellite
 
-Remote satellite using the [Wyoming protocol](https://github.com/rhasspy/wyoming).
+Remote voice satellite using the [Wyoming protocol](https://github.com/rhasspy/wyoming).
+
+* Works with [Home Assistant](https://www.home-assistant.io/integrations/wyoming)
+* Local wake word detection using [Wyoming services](https://github.com/rhasspy/wyoming#wyoming-projects)
+* Audio enhancements using [webrtc](https://github.com/rhasspy/webrtc-noise-gain/)
+
+See [the tutorial](docs/tutorial_2mic.md) to build a satellite using a [Raspberry Pi Zero 2 W](https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/) and a [ReSpeaker 2Mic HAT](https://wiki.keyestudio.com/Ks0314_keyestudio_ReSpeaker_2-Mic_Pi_HAT_V1.0).
+
+Requires:
+
+* Python 3.7+ (tested on 3.9+)
+* A microphone
 
 ## Installation
 
