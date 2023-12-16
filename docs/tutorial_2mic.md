@@ -284,7 +284,7 @@ Make sure to run `sudo systemctl daemon-reload` every time you make changes to t
 
 ## LED Service
 
-An example event service for the ReSpeaker 2Mic HAT is included in `wyoming-satellite/examples` that will change the LED color depending on the satellite state.
+Example event services for the ReSpeaker 2Mic and 4Mic HATs are included in `wyoming-satellite/examples` that will change the LED color depending on the satellite state. The example below is for the 2Mic HAT, using `2mic_service.py`.  If you're using the 4Mic HAT, use `4mic_service.py` instead as the LEDs and GPIO pins are slightly different.
 
 Install it from your home directory:
 
