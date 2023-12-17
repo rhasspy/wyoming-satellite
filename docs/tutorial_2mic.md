@@ -37,7 +37,7 @@ If you have the ReSpeaker 2Mic or 4Mic HAT, install the drivers:
 
 ```sh
 cd wyoming-satellite/
-sudo bash etc/install-repeaker-drivers.sh
+sudo bash etc/install-respeaker-drivers.sh
 ```
 
 After install the drivers, you must reboot the satellite:
