@@ -105,10 +105,12 @@ script/run \
   --mic-command 'arecord -r 16000 -c 1 -f S16_LE -t raw' \
   --snd-command 'aplay -r 22050 -c 1 -f S16_LE -t raw' \
   --wake-uri 'tcp://127.0.0.1:10400' \
-  --wake-word 'ok_nabu'
+  --wake-word-name 'ok_nabu'
 ```
 
 Audio will only be streamed to the server after the wake word has been detected.
+
+Note that `--vad` is unnecessary when connecting to a local instance of openwakeword.
 
 ## Sounds
 
