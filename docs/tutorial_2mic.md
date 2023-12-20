@@ -33,7 +33,7 @@ Clone the `wyoming-satellite` repository:
 git clone https://github.com/rhasspy/wyoming-satellite.git
 ```
 
-If you have the ReSpeaker 2Mic or 4Mic HAT, install the drivers:
+If you have the ReSpeaker 2Mic or 4Mic HAT, recompile and install the drivers (this will take really long time):
 
 ```sh
 cd wyoming-satellite/
