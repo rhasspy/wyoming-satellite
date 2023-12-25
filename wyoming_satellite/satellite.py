@@ -863,11 +863,14 @@ class VadStreamingSatellite(SatelliteBase):
 
 
 class WakeStreamingSatellite(SatelliteBase):
-    """Satellite that waits for local wake word detection before streaming."""
+    """Satellite that waits for local wake word detection before streaming. Splitting is done by SileroVAD"""
 
     def __init__(self, settings: SatelliteSettings) -> None:
         if not settings.wake.enabled:
             raise ValueError("Local wake word detection is not enabled")
+
+        if not settings.vad.enabled:
+            raise ValueError("VAD is not enabled")
 
         super().__init__(settings)
         self.is_streaming = False
@@ -910,3 +913,100 @@ class WakeStreamingSatellite(SatelliteBase):
             await self.forward_event(event)  # forward to event service
             await self.trigger_detection(Detection.from_event(event))
             await self.trigger_streaming_start()
+
+class WakeStreamingSatelliteWithVAD(SatelliteBase):
+    """Satellite that waits for local wake word detection before streaming."""
+
+    def __init__(self, settings: SatelliteSettings) -> None:
+        if not settings.wake.enabled:
+            raise ValueError("Local wake word detection is not enabled")
+
+        super().__init__(settings)
+        self.is_streaming = False
+        self.vad = SileroVad(
+            threshold=settings.vad.threshold, trigger_level=settings.vad.trigger_level
+        )
+
+        # Timestamp in the future when we will have timed out (set with
+        # time.monotonic())
+        self.timeout_seconds: Optional[float] = None
+
+        # Audio from right before speech starts (circular buffer)
+        self.vad_buffer: Optional[RingBuffer] = None
+
+        if settings.vad.buffer_seconds > 0:
+            # Assume 16Khz, 16-bit mono samples
+            vad_buffer_bytes = int(math.ceil(settings.vad.buffer_seconds * 16000 * 2))
+            self.vad_buffer = RingBuffer(maxlen=vad_buffer_bytes)
+
+    async def event_from_server(self, event: Event) -> None:
+        if Transcript.is_type(event.type):
+            # Stop streaming before event_from_server is called because it will
+            # play the "done" WAV.
+            self.is_streaming = False
+
+        await super().event_from_server(event)
+
+        if RunSatellite.is_type(event.type) or Transcript.is_type(event.type):
+            self.is_streaming = False
+            await self.trigger_streaming_stop()
+            await self._send_wake_detect()
+            _LOGGER.info("Waiting for wake word")
+
+    async def event_from_mic(
+        self, event: Event, audio_bytes: Optional[bytes] = None
+    ) -> None:
+        if not AudioChunk.is_type(event.type):
+            return
+
+        if (
+            self.is_streaming
+            and (self.timeout_seconds is not None)
+            and (time.monotonic() >= self.timeout_seconds)
+        ):
+            # Time out during wake word recognition
+            self.is_streaming = False
+            self.timeout_seconds = None
+
+            # Send end of voice message
+            await self.event_to_server(event)
+
+            # Stop pipeline
+            await self.event_to_server(AudioStop().event())
+
+            _LOGGER.info("Voice Activity stopped")
+            await self.trigger_streaming_stop()
+        elif self.is_streaming:
+            # Forward to server
+            await self.event_to_server(event)
+
+            # Check VAD
+            chunk: Optional[AudioChunk] = None
+            if audio_bytes is None:
+                # Need to unpack
+                chunk = AudioChunk.from_event(event)
+                audio_bytes = chunk.audio
+
+            if self.vad(audio_bytes):
+                self.timeout_seconds = (
+                    time.monotonic() + self.settings.vad.command_timeout
+                )
+        else:
+            # Forward to wake word service
+            await self.event_to_wake(event)
+
+    async def event_from_wake(self, event: Event) -> None:
+        if self.is_streaming:
+            return
+
+        if Detection.is_type(event.type):
+            self.is_streaming = True
+            _LOGGER.debug("Streaming audio")
+            await self._send_run_pipeline()
+            await self.forward_event(event)  # forward to event service
+            await self.trigger_detection(Detection.from_event(event))
+            await self.trigger_streaming_start()
+            self.timeout_seconds = (
+                time.monotonic() + self.settings.vad.command_timeout
+            )
+

@@ -129,6 +129,9 @@ class VadSettings:
     wake_word_timeout: Optional[float] = 5.0
     """Seconds before going back to sleep if wake word is not detected."""
 
+    command_timeout: Optional[float] = 1.0
+    """Seconds before stopping stream tranfer."""
+
 
 @dataclass(frozen=True)
 class EventSettings(ServiceSettings):

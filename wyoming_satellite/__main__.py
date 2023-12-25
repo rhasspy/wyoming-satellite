@@ -19,6 +19,7 @@ from .satellite import (
     SatelliteBase,
     VadStreamingSatellite,
     WakeStreamingSatellite,
+    WakeStreamingSatelliteWithVAD,
 )
 from .settings import (
     EventSettings,
@@ -313,7 +314,10 @@ async def main() -> None:
 
     satellite: SatelliteBase
 
-    if settings.wake.enabled:
+    if settings.wake.enabled and settings.vad.enabled:
+        # Local wake word detection with VAD
+        satellite = WakeStreamingSatelliteWithVAD(settings)
+    elif settings.wake.enabled:
         # Local wake word detection
         satellite = WakeStreamingSatellite(settings)
     elif settings.vad.enabled:
