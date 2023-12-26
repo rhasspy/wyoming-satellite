@@ -204,6 +204,14 @@ You can also use `--mic-volume-multiplier X` to multiply all audio samples by `X
 
 ## Local Wake Word Detection
 
+Install the necessary system dependencies:
+
+```sh
+sudo apt-get update
+sudo apt-get install --no-install-recommends  \
+  libopenblas-dev
+```
+
 From your home directory, install the openWakeWord Wyoming service:
 
 ```sh
