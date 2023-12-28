@@ -439,8 +439,12 @@ def _split(command: Optional[str]) -> Optional[List[str]]:
 
 # -----------------------------------------------------------------------------
 
-if __name__ == "__main__":
+def run():
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
+
+
+if __name__ == "__main__":
+    run()
