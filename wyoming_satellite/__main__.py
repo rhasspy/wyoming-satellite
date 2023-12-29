@@ -186,6 +186,14 @@ async def main() -> None:
         "--error-command",
         help="Command to run when an error occurs",
     )
+    parser.add_argument(
+        "--volume-set-command",
+        help="Command to run when volume set command arrives",
+    )
+    parser.add_argument(
+        "--mic-mute-command",
+        help="Command to run when mic mute command arrives",
+    )
 
     # Sounds
     parser.add_argument(
@@ -309,6 +317,8 @@ async def main() -> None:
             tts_start=_split(args.tts_start_command),
             tts_stop=_split(args.tts_stop_command),
             error=_split(args.error_command),
+            setvolume=_split(args.volume_set_command),
+            mutemic=_split(args.mic_mute_command),
         ),
     )
 

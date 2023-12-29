@@ -194,6 +194,15 @@ class SatelliteBase:
         elif Error.is_type(event.type):
             _LOGGER.warning(event)
             await self.trigger_error(Error.from_event(event))
+        elif MuteMic.is_type(event.type):
+            # Mic Mute request
+            _LOGGER.debug(event)
+            await self.trigger_mic_mute(MuteMic.from_event(event))
+        elif SetVolume.is_type(event.type):
+            # Volume set request
+            _LOGGER.debug(event)
+            await self.trigger_volume_set(VolumeSet.from_event(event))
+
 
         # Forward everything except audio to event service
         if not AudioChunk.is_type(event.type):
@@ -662,6 +671,15 @@ class SatelliteBase:
         """Forward an event to the event service."""
         if self._event_queue is not None:
             self._event_queue.put_nowait(event)
+
+    async def trigger_volume_set(self, setvolume: SetVolume) -> None:
+        """Called when volume set is received."""
+        await run_event_command(self.settings.event.setvolume, setvolume.volume)
+
+    async def trigger_mute_mic(self, mutemic: MuteMic) -> None:
+        """Called when mute mic is received."""
+        await run_event_command(self.settings.event.mutemic, mutemic.mute)
+
 
     def _make_event_client(self) -> Optional[AsyncClient]:
         """Create client for event service."""

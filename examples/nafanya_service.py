@@ -12,7 +12,7 @@ from typing import Tuple
 #import spidev
 from wyoming.asr import Transcript
 from wyoming.event import Event
-from wyoming.satellite import RunSatellite, StreamingStarted, StreamingStopped
+from wyoming.satellite import RunSatellite, StreamingStarted, StreamingStopped, VolumeAdjusted, MicMuted, MuteMic, SetVolume
 from wyoming.server import AsyncEventHandler, AsyncServer
 from wyoming.vad import VoiceStarted
 from wyoming.wake import Detection
