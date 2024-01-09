@@ -1,19 +1,15 @@
-#!/usr/bin/env python3
+"""Main entry point for Wyoming satellite."""
 import argparse
 import asyncio
 import logging
-import shlex
 import sys
-import time
-import uuid
 from functools import partial
 from pathlib import Path
-from typing import List, Optional
 
-from wyoming.event import Event
-from wyoming.info import Attribution, Describe, Info, Satellite
-from wyoming.server import AsyncEventHandler, AsyncServer, AsyncTcpServer
+from wyoming.info import Attribution, Info, Satellite
+from wyoming.server import AsyncServer, AsyncTcpServer
 
+from .event_handler import SatelliteEventHandler
 from .satellite import (
     AlwaysStreamingSatellite,
     SatelliteBase,
@@ -28,7 +24,13 @@ from .settings import (
     VadSettings,
     WakeSettings,
 )
-from .utils import run_event_command
+from .utils import (
+    get_mac_address,
+    needs_silero,
+    needs_webrtc,
+    run_event_command,
+    split_command,
+)
 
 _LOGGER = logging.getLogger()
 _DIR = Path(__file__).parent
@@ -263,7 +265,7 @@ async def main() -> None:
     settings = SatelliteSettings(
         mic=MicSettings(
             uri=args.mic_uri,
-            command=_split(args.mic_command),
+            command=split_command(args.mic_command),
             rate=args.mic_command_rate,
             width=args.mic_command_width,
             channels=args.mic_command_channels,
@@ -281,12 +283,12 @@ async def main() -> None:
         ),
         wake=WakeSettings(
             uri=args.wake_uri,
-            command=_split(args.wake_command),
+            command=split_command(args.wake_command),
             names=args.wake_word_name,
         ),
         snd=SndSettings(
             uri=args.snd_uri,
-            command=_split(args.snd_command),
+            command=split_command(args.snd_command),
             rate=args.snd_command_rate,
             width=args.snd_command_width,
             channels=args.snd_command_channels,
@@ -296,18 +298,18 @@ async def main() -> None:
         ),
         event=EventSettings(
             uri=args.event_uri,
-            startup=_split(args.startup_command),
-            streaming_start=_split(args.streaming_start_command),
-            streaming_stop=_split(args.streaming_stop_command),
-            detect=_split(args.detect_command),
-            detection=_split(args.detection_command),
-            transcript=_split(args.transcript_command),
-            stt_start=_split(args.stt_start_command),
-            stt_stop=_split(args.stt_stop_command),
-            synthesize=_split(args.synthesize_command),
-            tts_start=_split(args.tts_start_command),
-            tts_stop=_split(args.tts_stop_command),
-            error=_split(args.error_command),
+            startup=split_command(args.startup_command),
+            streaming_start=split_command(args.streaming_start_command),
+            streaming_stop=split_command(args.streaming_stop_command),
+            detect=split_command(args.detect_command),
+            detection=split_command(args.detection_command),
+            transcript=split_command(args.transcript_command),
+            stt_start=split_command(args.stt_start_command),
+            stt_stop=split_command(args.stt_stop_command),
+            synthesize=split_command(args.synthesize_command),
+            tts_start=split_command(args.tts_start_command),
+            tts_stop=split_command(args.tts_stop_command),
+            error=split_command(args.error_command),
         ),
     )
 
@@ -324,7 +326,7 @@ async def main() -> None:
         satellite = AlwaysStreamingSatellite(settings)
 
     if args.startup_command:
-        await run_event_command(_split(args.startup_command))
+        await run_event_command(split_command(args.startup_command))
 
     _LOGGER.info("Ready")
 
@@ -362,82 +364,6 @@ async def main() -> None:
 
 # -----------------------------------------------------------------------------
 
-
-class SatelliteEventHandler(AsyncEventHandler):
-    """Event handler for clients."""
-
-    def __init__(
-        self,
-        wyoming_info: Info,
-        satellite: SatelliteBase,
-        cli_args: argparse.Namespace,
-        *args,
-        **kwargs,
-    ) -> None:
-        super().__init__(*args, **kwargs)
-
-        self.cli_args = cli_args
-        self.wyoming_info_event = wyoming_info.event()
-        self.client_id = str(time.monotonic_ns())
-        self.satellite = satellite
-
-    # -------------------------------------------------------------------------
-
-    async def handle_event(self, event: Event) -> bool:
-        """Handle events from the server."""
-        if Describe.is_type(event.type):
-            await self.write_event(self.wyoming_info_event)
-            return True
-
-        if self.satellite.server_id is None:
-            # Take over after a problem occurred
-            self.satellite.set_server(self.client_id, self.writer)
-        elif self.satellite.server_id != self.client_id:
-            # New connection
-            _LOGGER.debug("Connection cancelled: %s", self.client_id)
-            return False
-
-        await self.satellite.event_from_server(event)
-
-        return True
-
-    async def disconnect(self) -> None:
-        """Server disconnect."""
-        if self.satellite.server_id == self.client_id:
-            self.satellite.clear_server()
-
-
-# -----------------------------------------------------------------------------
-
-
-def get_mac_address() -> str:
-    """Return MAC address formatted as hex with no colons."""
-    return "".join(
-        # pylint: disable=consider-using-f-string
-        ["{:02x}".format((uuid.getnode() >> ele) & 0xFF) for ele in range(0, 8 * 6, 8)][
-            ::-1
-        ]
-    )
-
-
-def needs_webrtc(args: argparse.Namespace) -> bool:
-    """Return True if webrtc must be used."""
-    return (args.mic_noise_suppression > 0) or (args.mic_auto_gain > 0)
-
-
-def needs_silero(args: argparse.Namespace) -> bool:
-    """Return True if silero-vad must be used."""
-    return args.vad
-
-
-def _split(command: Optional[str]) -> Optional[List[str]]:
-    if not command:
-        return None
-
-    return shlex.split(command)
-
-
-# -----------------------------------------------------------------------------
 
 def run():
     try:

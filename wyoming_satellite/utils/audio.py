@@ -1,10 +1,9 @@
-"""Utilities for Wyoming satellite."""
+"""Audio utilities."""
 import array
-import asyncio
 import logging
 import wave
 from pathlib import Path
-from typing import Iterable, Iterator, List, Optional, Union
+from typing import Iterable, Iterator, Union
 
 from wyoming.audio import AudioChunk, AudioStart, AudioStop
 from wyoming.event import Event
@@ -96,27 +95,6 @@ def chunk_samples(
     # Capture leftover chunks
     if rest_samples := samples[next_chunk_idx:]:
         leftover_chunk_buffer.append(rest_samples)
-
-
-async def run_event_command(
-    command: Optional[List[str]], command_input: Optional[str] = None
-) -> None:
-    """Run a custom event command with optional input."""
-    if not command:
-        return
-
-    _LOGGER.debug("Running %s", command)
-    program, *program_args = command
-    proc = await asyncio.create_subprocess_exec(
-        program, *program_args, stdin=asyncio.subprocess.PIPE
-    )
-    assert proc.stdin is not None
-
-    if command_input:
-        await proc.communicate(input=command_input.encode("utf-8"))
-    else:
-        proc.stdin.close()
-        await proc.wait()
 
 
 def wav_to_events(
