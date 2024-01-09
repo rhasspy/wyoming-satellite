@@ -4,3 +4,4 @@ isort==5.11.3
 mypy==0.991
 pylint==2.15.9
 pytest==7.4.3
+pytest-asyncio==0.23.3
