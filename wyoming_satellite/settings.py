@@ -1,6 +1,6 @@
 """Satellite settings."""
 from abc import ABC
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional
 
 
@@ -153,8 +153,8 @@ class SatelliteSettings:
     """Wyoming satellite settings."""
 
     mic: MicSettings
-    vad: VadSettings
-    wake: WakeSettings
-    snd: SndSettings
-    event: EventSettings
+    vad: VadSettings = field(default_factory=VadSettings)
+    wake: WakeSettings = field(default_factory=WakeSettings)
+    snd: SndSettings = field(default_factory=SndSettings)
+    event: EventSettings = field(default_factory=EventSettings)
     restart_timeout: float = 5.0
