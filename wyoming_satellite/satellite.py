@@ -5,7 +5,7 @@ import math
 import time
 from enum import Enum, auto
 from pathlib import Path
-from typing import Callable, Optional, Set, Union
+from typing import Callable, Dict, Optional, Set, Union
 
 from pyring_buffer import RingBuffer
 from wyoming.asr import Transcript
@@ -63,7 +63,7 @@ class SatelliteBase:
     @property
     def is_running(self) -> bool:
         """True if not stopping/stopped."""
-        return self._state not in (State.STOPPING, State.STOPPED)
+        return self._state not in (State.STOPPED,)
 
     @property
     def state(self) -> State:
@@ -235,28 +235,30 @@ class SatelliteBase:
                 "Connecting to mic service: %s",
                 self.settings.mic.uri or self.settings.mic.command,
             )
-            self._mic_task = asyncio.create_task(self._mic_task_proc())
+            self._mic_task = asyncio.create_task(self._mic_task_proc(), name="mic")
 
         if self.settings.snd.enabled:
             _LOGGER.debug(
                 "Connecting to snd service: %s",
                 self.settings.snd.uri or self.settings.snd.command,
             )
-            self._snd_task = asyncio.create_task(self._snd_task_proc())
+            self._snd_task = asyncio.create_task(self._snd_task_proc(), name="snd")
 
         if self.settings.wake.enabled:
             _LOGGER.debug(
                 "Connecting to wake service: %s",
                 self.settings.wake.uri or self.settings.wake.command,
             )
-            self._wake_task = asyncio.create_task(self._wake_task_proc())
+            self._wake_task = asyncio.create_task(self._wake_task_proc(), name="wake")
 
         if self.settings.event.enabled:
             _LOGGER.debug(
                 "Connecting to event service: %s",
                 self.settings.event.uri or self.settings.event.command,
             )
-            self._event_task = asyncio.create_task(self._event_task_proc())
+            self._event_task = asyncio.create_task(
+                self._event_task_proc(), name="event"
+            )
 
         _LOGGER.info("Connected to services")
 
@@ -528,9 +530,19 @@ class SatelliteBase:
         pending: Set[asyncio.Task] = set()
 
         async def _disconnect() -> None:
+            nonlocal to_client_task, from_client_task
             try:
                 if wake_client is not None:
                     await wake_client.disconnect()
+
+                # Clean up tasks
+                if to_client_task is not None:
+                    to_client_task.cancel()
+                    to_client_task = None
+
+                if from_client_task is not None:
+                    from_client_task.cancel()
+                    from_client_task = None
             except Exception:
                 pass  # ignore disconnect errors
 
@@ -557,12 +569,16 @@ class SatelliteBase:
                 # Read/write in "parallel"
                 if to_client_task is None:
                     # From satellite to wake service
-                    to_client_task = asyncio.create_task(self._wake_queue.get())
+                    to_client_task = asyncio.create_task(
+                        self._wake_queue.get(), name="wake_to_client"
+                    )
                     pending.add(to_client_task)
 
                 if from_client_task is None:
                     # From wake service to satellite
-                    from_client_task = asyncio.create_task(wake_client.read_event())
+                    from_client_task = asyncio.create_task(
+                        wake_client.read_event(), name="wake_from_client"
+                    )
                     pending.add(from_client_task)
 
                 done, pending = await asyncio.wait(
@@ -717,6 +733,12 @@ class AlwaysStreamingSatellite(SatelliteBase):
         super().__init__(settings)
         self.is_streaming = False
 
+        if settings.vad.enabled:
+            _LOGGER.warning("VAD is enabled but will not be used")
+
+        if settings.wake.enabled:
+            _LOGGER.warning("Local wake word detection is enabled but will not be used")
+
     async def event_from_server(self, event: Event) -> None:
         await super().event_from_server(event)
 
@@ -770,6 +792,9 @@ class VadStreamingSatellite(SatelliteBase):
             # Assume 16Khz, 16-bit mono samples
             vad_buffer_bytes = int(math.ceil(settings.vad.buffer_seconds * 16000 * 2))
             self.vad_buffer = RingBuffer(maxlen=vad_buffer_bytes)
+
+        if settings.wake.enabled:
+            _LOGGER.warning("Local wake word detection is enabled but will not be used")
 
     async def event_from_server(self, event: Event) -> None:
         await super().event_from_server(event)
@@ -872,6 +897,14 @@ class WakeStreamingSatellite(SatelliteBase):
         super().__init__(settings)
         self.is_streaming = False
 
+        # Timestamp in the future when the refractory period is over (set with
+        # time.monotonic()).
+        # wake word id -> seconds
+        self.refractory_timestamp: Dict[Optional[str], float] = {}
+
+        if settings.vad.enabled:
+            _LOGGER.warning("VAD is enabled but will not be used")
+
     async def event_from_server(self, event: Event) -> None:
         if Transcript.is_type(event.type):
             # Stop streaming before event_from_server is called because it will
@@ -904,8 +937,29 @@ class WakeStreamingSatellite(SatelliteBase):
             return
 
         if Detection.is_type(event.type):
+            detection = Detection.from_event(event)
+
+            # Check refractory period to avoid multiple back-to-back detections
+            refractory_timestamp = self.refractory_timestamp.get(detection.name)
+            if (refractory_timestamp is not None) and (
+                refractory_timestamp > time.monotonic()
+            ):
+                _LOGGER.debug("Wake word detection occurred during refractory period")
+                return
+
             self.is_streaming = True
             _LOGGER.debug("Streaming audio")
+
+            if self.settings.wake.refractory_seconds is not None:
+                # Another detection may not occur for this wake word until
+                # refractory period is over.
+                self.refractory_timestamp[detection.name] = (
+                    time.monotonic() + self.settings.wake.refractory_seconds
+                )
+            else:
+                # No refractory period
+                self.refractory_timestamp.pop(detection.name, None)
+
             await self._send_run_pipeline()
             await self.forward_event(event)  # forward to event service
             await self.trigger_detection(Detection.from_event(event))

@@ -123,6 +123,12 @@ async def main() -> None:
         default=1,
         help="Sample channels of wake-command (default: 1)",
     )
+    parser.add_argument(
+        "--wake-refractory-seconds",
+        type=float,
+        default=5.0,
+        help="Seconds after a wake word detection before another detection is handled (default: 5)",
+    )
 
     # Voice activity detector
     parser.add_argument(
@@ -285,6 +291,7 @@ async def main() -> None:
             uri=args.wake_uri,
             command=split_command(args.wake_command),
             names=args.wake_word_name,
+            refractory_seconds=args.wake_refractory_seconds,
         ),
         snd=SndSettings(
             uri=args.snd_uri,

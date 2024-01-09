@@ -109,6 +109,9 @@ class WakeSettings(ServiceSettings):
     channels: int = 1
     """Sample channels in wake word audio"""
 
+    refractory_seconds: Optional[float] = 5.0
+    """Seconds after a wake word detection before another detection is handled."""
+
 
 @dataclass(frozen=True)
 class VadSettings:
