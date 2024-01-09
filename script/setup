@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import subprocess
 import venv
 from pathlib import Path
@@ -7,6 +8,9 @@ _DIR = Path(__file__).parent
 _PROGRAM_DIR = _DIR.parent
 _VENV_DIR = _PROGRAM_DIR / ".venv"
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--dev", action="store_true", help="Install dev requirements")
+args = parser.parse_args()
 
 # Create virtual environment
 builder = venv.EnvBuilder(with_pip=True)
@@ -29,3 +33,9 @@ subprocess.check_call(
         str(_PROGRAM_DIR / "requirements.txt"),
     ]
 )
+
+if args.dev:
+    # Install dev requirements
+    subprocess.check_call(
+        pip + ["install", "-r", str(_PROGRAM_DIR / "requirements_dev.txt")]
+    )
