@@ -1,0 +1,1 @@
+"""Wyoming satellite tests."""
