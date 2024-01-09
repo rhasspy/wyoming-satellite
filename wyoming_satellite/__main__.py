@@ -291,7 +291,9 @@ async def main() -> None:
             uri=args.wake_uri,
             command=split_command(args.wake_command),
             names=args.wake_word_name,
-            refractory_seconds=args.wake_refractory_seconds,
+            refractory_seconds=args.wake_refractory_seconds
+            if args.wake_refractory_seconds > 0
+            else None,
         ),
         snd=SndSettings(
             uri=args.snd_uri,

@@ -117,6 +117,8 @@ script/run \
 
 Audio will only be streamed to the server after the wake word has been detected.
 
+Once a wake word has been detected, it can not be detected again for several seconds (called the "refractory period"). You can change this with `--wake-refractory-seconds <SECONDS>`.
+
 Note that `--vad` is unnecessary when connecting to a local instance of openwakeword.
 
 ## Sounds
