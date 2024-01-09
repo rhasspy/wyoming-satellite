@@ -8,6 +8,7 @@ RUN apt-get update && \
 
 WORKDIR /app
 
+COPY sounds/ ./sounds/
 COPY script/setup ./script/
 COPY setup.py requirements.txt MANIFEST.in ./
 COPY wyoming_satellite/ ./wyoming_satellite/
