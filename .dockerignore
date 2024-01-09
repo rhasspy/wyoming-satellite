@@ -6,3 +6,4 @@
 !script/run
 !wyoming_satellite/*.py
 !docker/run
+!sounds/*.wav
