@@ -22,7 +22,7 @@ from wyoming.vad import VoiceStarted, VoiceStopped
 from wyoming.wake import Detect, Detection, WakeProcessAsyncClient
 
 from .settings import SatelliteSettings
-from .utils import multiply_volume, run_event_command, wav_to_events
+from .utils import DebugAudioWriter, multiply_volume, run_event_command, wav_to_events
 from .vad import SileroVad
 from .webrtc import WebRtcAudio
 
@@ -59,6 +59,19 @@ class SatelliteBase:
         self._wake_queue: "Optional[asyncio.Queue[Event]]" = None
         self._event_task: Optional[asyncio.Task] = None
         self._event_queue: "Optional[asyncio.Queue[Event]]" = None
+
+        # Debug audio recording
+        self.wake_audio_writer: Optional[DebugAudioWriter] = None
+        self.stt_audio_writer: Optional[DebugAudioWriter] = None
+        if settings.debug_recording_dir:
+            self.wake_audio_writer = DebugAudioWriter(
+                settings.debug_recording_dir,
+                "wake",
+                ring_buffer_size=(2 * 16000 * 2 * 1),  # last 2 sec
+            )
+            self.stt_audio_writer = DebugAudioWriter(
+                settings.debug_recording_dir, "stt"
+            )
 
     @property
     def is_running(self) -> bool:
@@ -747,7 +760,16 @@ class AlwaysStreamingSatellite(SatelliteBase):
             _LOGGER.info("Streaming audio")
             await self._send_run_pipeline()
             await self.trigger_streaming_start()
+        elif Detection.is_type(event.type):
+            # Start debug recording
+            if self.stt_audio_writer is not None:
+                self.stt_audio_writer.start()
         elif Transcript.is_type(event.type):
+            # Stop debug recording
+            if self.stt_audio_writer is not None:
+                self.stt_audio_writer.stop()
+
+            # We're always streaming
             _LOGGER.info("Streaming audio")
 
             # Re-trigger streaming start even though we technically don't stop
@@ -763,6 +785,14 @@ class AlwaysStreamingSatellite(SatelliteBase):
         if AudioChunk.is_type(event.type):
             # Forward to server
             await self.event_to_server(event)
+
+            # Debug audio recording
+            if self.stt_audio_writer is not None:
+                if audio_bytes is None:
+                    chunk = AudioChunk.from_event(event)
+                    audio_bytes = chunk.audio
+
+                self.stt_audio_writer.write(audio_bytes)
 
 
 # -----------------------------------------------------------------------------
@@ -801,12 +831,32 @@ class VadStreamingSatellite(SatelliteBase):
 
         if RunSatellite.is_type(event.type):
             _LOGGER.info("Waiting for speech")
+        elif Detection.is_type(event.type):
+            # Start debug recording
+            if self.stt_audio_writer is not None:
+                self.stt_audio_writer.start()
+        elif Transcript.is_type(event.type):
+            # Stop debug recording
+            if self.stt_audio_writer is not None:
+                self.stt_audio_writer.stop()
 
     async def event_from_mic(
         self, event: Event, audio_bytes: Optional[bytes] = None
     ) -> None:
         if not AudioChunk.is_type(event.type):
             return
+
+        # Only unpack chunk once
+        chunk: Optional[AudioChunk] = None
+
+        # Debug audio recording
+        if self.stt_audio_writer is not None:
+            if audio_bytes is None:
+                # Need to unpack
+                chunk = AudioChunk.from_event(event)
+                audio_bytes = chunk.audio
+
+            self.stt_audio_writer.write(audio_bytes)
 
         if (
             self.is_streaming
@@ -817,6 +867,10 @@ class VadStreamingSatellite(SatelliteBase):
             self.is_streaming = False
             self.timeout_seconds = None
 
+            # Stop debug recording
+            if self.stt_audio_writer is not None:
+                self.stt_audio_writer.stop()
+
             # Stop pipeline
             await self.event_to_server(AudioStop().event())
 
@@ -825,10 +879,11 @@ class VadStreamingSatellite(SatelliteBase):
 
         if not self.is_streaming:
             # Check VAD
-            chunk: Optional[AudioChunk] = None
             if audio_bytes is None:
-                # Need to unpack
-                chunk = AudioChunk.from_event(event)
+                if chunk is None:
+                    # Need to unpack
+                    chunk = AudioChunk.from_event(event)
+
                 audio_bytes = chunk.audio
 
             if not self.vad(audio_bytes):
@@ -905,25 +960,60 @@ class WakeStreamingSatellite(SatelliteBase):
         if settings.vad.enabled:
             _LOGGER.warning("VAD is enabled but will not be used")
 
+        # Used for debug audio recording so both wake and stt WAV files have the
+        # same timestamp.
+        self._debug_recording_timestamp: Optional[int] = None
+
     async def event_from_server(self, event: Event) -> None:
-        if Transcript.is_type(event.type):
+        # Only check event types once
+        is_run_satellite = False
+        is_transcript = False
+
+        if RunSatellite.is_type(event.type):
+            is_run_satellite = True
+        elif Transcript.is_type(event.type):
+            is_transcript = True
+
+        if is_transcript:
             # Stop streaming before event_from_server is called because it will
             # play the "done" WAV.
             self.is_streaming = False
 
+            # Stop debug recording (stt)
+            if self.stt_audio_writer is not None:
+                self.stt_audio_writer.stop()
+
         await super().event_from_server(event)
 
-        if RunSatellite.is_type(event.type) or Transcript.is_type(event.type):
+        if is_run_satellite or is_transcript:
+            # Stop streaming and go back to wake word detection
             self.is_streaming = False
             await self.trigger_streaming_stop()
             await self._send_wake_detect()
             _LOGGER.info("Waiting for wake word")
+
+            # Start debug recording (wake)
+            self._debug_recording_timestamp = time.monotonic_ns()
+            if self.wake_audio_writer is not None:
+                self.wake_audio_writer.start(timestamp=self._debug_recording_timestamp)
 
     async def event_from_mic(
         self, event: Event, audio_bytes: Optional[bytes] = None
     ) -> None:
         if not AudioChunk.is_type(event.type):
             return
+
+        # Debug audio recording
+        if (self.wake_audio_writer is not None) or (self.stt_audio_writer is not None):
+            if audio_bytes is None:
+                chunk = AudioChunk.from_event(event)
+                audio_bytes = chunk.audio
+
+            if self.wake_audio_writer is not None:
+                self.wake_audio_writer.write(audio_bytes)
+
+            if self.stt_audio_writer is not None:
+                self.stt_audio_writer.write(audio_bytes)
 
         if self.is_streaming:
             # Forward to server
@@ -946,6 +1036,14 @@ class WakeStreamingSatellite(SatelliteBase):
             ):
                 _LOGGER.debug("Wake word detection occurred during refractory period")
                 return
+
+            # Stop debug recording (wake)
+            if self.wake_audio_writer is not None:
+                self.wake_audio_writer.stop()
+
+            # Start debug recording (stt)
+            if self.stt_audio_writer is not None:
+                self.stt_audio_writer.start(timestamp=self._debug_recording_timestamp)
 
             self.is_streaming = True
             _LOGGER.debug("Streaming audio")

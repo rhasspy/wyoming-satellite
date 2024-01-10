@@ -1,6 +1,7 @@
 """Satellite settings."""
 from abc import ABC
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import List, Optional
 
 
@@ -160,4 +161,8 @@ class SatelliteSettings:
     wake: WakeSettings = field(default_factory=WakeSettings)
     snd: SndSettings = field(default_factory=SndSettings)
     event: EventSettings = field(default_factory=EventSettings)
+
     restart_timeout: float = 5.0
+
+    debug_recording_dir: Optional[Path] = None
+    """Path to directory where debug audio is written."""

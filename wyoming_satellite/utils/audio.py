@@ -1,10 +1,12 @@
 """Audio utilities."""
 import array
 import logging
+import time
 import wave
 from pathlib import Path
-from typing import Iterable, Iterator, Union
+from typing import Iterable, Iterator, Optional, Union
 
+from pyring_buffer import RingBuffer
 from wyoming.audio import AudioChunk, AudioStart, AudioStop
 from wyoming.event import Event
 
@@ -130,3 +132,74 @@ def wav_to_events(
             audio_bytes = wav_file.readframes(samples_per_chunk)
 
         yield AudioStop(timestamp=timestamp).event()
+
+
+class DebugAudioWriter:
+    def __init__(
+        self,
+        dir_path: Union[str, Path],
+        suffix: str,
+        rate: int = 16000,
+        width: int = 2,
+        channels: int = 1,
+        ring_buffer_size: Optional[int] = None,
+    ) -> None:
+        self.dir_path = Path(dir_path)
+        self.suffix = suffix
+        self.rate = rate
+        self.width = width
+        self.channels = channels
+
+        self._wav_path: Optional[Path] = None
+        self._wav_writer: Optional[wave.Wave_write] = None
+
+        # If ring buffer size is set, we will hold audio in a ring buffer
+        # instead of directly writing it to disk.
+        #
+        # This allows only the last few seconds of wake word audio to be stored.
+        self._ring_buffer: Optional[RingBuffer] = None
+        if ring_buffer_size is not None:
+            # Hold audio in a ring buffer before writing
+            self._ring_buffer = RingBuffer(ring_buffer_size)
+
+    def start(self, timestamp: Optional[int] = None) -> None:
+        self.stop()
+
+        if timestamp is None:
+            timestamp = time.monotonic_ns()
+
+        self._wav_path = self.dir_path / f"{timestamp}-{self.suffix}.wav"
+        self._wav_path.parent.mkdir(parents=True, exist_ok=True)
+
+        self._wav_writer = wave.open(str(self._wav_path), "wb")
+        self._wav_writer.setframerate(self.rate)
+        self._wav_writer.setsampwidth(self.width)
+        self._wav_writer.setnchannels(self.channels)
+
+        _LOGGER.debug("Started recording to %s", self._wav_path)
+
+    def write(self, audio: bytes) -> None:
+        if self._wav_writer is None:
+            return
+
+        if self._ring_buffer is not None:
+            # Hold audio in a ring buffer before writing
+            self._ring_buffer.put(audio)
+        else:
+            # Write directly to disk
+            self._wav_writer.writeframes(audio)
+
+    def stop(self) -> None:
+        if self._wav_writer is None:
+            return
+
+        if self._ring_buffer is not None:
+            # Write all audio now and reset buffer
+            self._wav_writer.writeframes(self._ring_buffer.getvalue())
+            self._ring_buffer = RingBuffer(self._ring_buffer.maxlen)
+
+        self._wav_writer.close()
+        self._wav_writer = None
+
+        _LOGGER.debug("Stopped recording to %s", self._wav_path)
+        self._wav_path = None
