@@ -27,6 +27,8 @@ subprocess.check_call(
     pip
     + [
         "install",
+        "--extra-index-url",
+        "https://www.piwheels.org/simple",
         "-f",
         "https://synesthesiam.github.io/prebuilt-apps/",
         "-r",
