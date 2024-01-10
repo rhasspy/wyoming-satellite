@@ -222,6 +222,9 @@ async def main() -> None:
         help="Host address for zeroconf discovery (default: detect)",
     )
     #
+    parser.add_argument(
+        "--debug-recording-dir", help="Directory to store audio for debugging"
+    )
     parser.add_argument("--debug", action="store_true", help="Log DEBUG messages")
     args = parser.parse_args()
 
@@ -257,6 +260,10 @@ async def main() -> None:
 
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO)
     _LOGGER.debug(args)
+
+    if args.debug_recording_dir:
+        args.debug_recording_dir = Path(args.debug_recording_dir)
+        _LOGGER.info("Recording audio to %s", args.debug_recording_dir)
 
     wyoming_info = Info(
         satellite=Satellite(
@@ -320,6 +327,7 @@ async def main() -> None:
             tts_stop=split_command(args.tts_stop_command),
             error=split_command(args.error_command),
         ),
+        debug_recording_dir=args.debug_recording_dir,
     )
 
     satellite: SatelliteBase
