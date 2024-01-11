@@ -22,6 +22,14 @@ Requires:
 
 ## Installation
 
+Install the necessary system dependencies:
+
+``` sh
+sudo apt-get install python3-venv python3-pip
+```
+
+Then run the install script:
+
 ``` sh
 script/setup
 ```
