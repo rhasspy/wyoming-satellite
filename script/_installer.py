@@ -94,6 +94,12 @@ def main() -> None:
 
     settings = Settings.load()
 
+    venv_dir = _PROGRAM_DIR / ".venv"
+    if not venv_dir.exists():
+        run_with_gauge(
+            "Installing satellite base...", [[str(_PROGRAM_DIR / "script" / "setup")]]
+        )
+
     while True:
         choice = main_menu(settings)
 
@@ -107,8 +113,10 @@ def main() -> None:
             set_satellite_name(settings)
         elif choice == "type":
             set_satellite_type(settings)
-        elif choice == "services":
-            pass
+        elif choice == "generate":
+            generate_services(settings)
+        elif choice == "install":
+            install_services(settings)
         else:
             break
 
@@ -126,7 +134,8 @@ def main_menu(settings: Settings) -> Optional[str]:
         [
             ("name", "Set Satellite Name"),
             ("type", "Set Satellite Type"),
-            ("services", "Generate Services"),
+            ("generate", "Generate Services"),
+            ("install", "Install Services"),
         ]
     )
 
@@ -197,8 +206,17 @@ def configure_microphone(settings: Settings) -> None:
                 "This will take a while and require a reboot. "
                 "Continue?"
             ):
-                subprocess.check_call(
-                    ["sudo", str(_PROGRAM_DIR / "etc" / "install-respeaker-drivers.sh")]
+                password = paswordbox("sudo password:")
+                run_with_gauge(
+                    "Installing drivers...",
+                    [
+                        [
+                            "sudo",
+                            "-S",
+                            str(_PROGRAM_DIR / "etc" / "install-respeaker-drivers.sh"),
+                        ]
+                    ],
+                    sudo_password=password,
                 )
 
                 msgbox(
@@ -360,10 +378,9 @@ def configure_wake_word(settings: Settings) -> None:
                 settings.wake_word_system,
             )
             if wake_word_system is not None:
-                settings.wake_word_system = wake_word_system
-                install_wake_word(settings)
+                install_wake_word(settings, wake_word_system)
         elif choice == "wake_word":
-            pass
+            select_wake_word(settings)
         else:
             break
 
@@ -383,10 +400,8 @@ def wake_word_menu(settings: Settings) -> Optional[str]:
     )
 
 
-def install_wake_word(settings: Settings) -> None:
-    if settings.wake_word_system == WakeWordSystem.OPENWAKEWORD:
-        settings.wake_word.setdefault(WakeWordSystem.OPENWAKEWORD, "ok_nabu")
-
+def install_wake_word(settings: Settings, wake_word_system: WakeWordSystem) -> None:
+    if wake_word_system == WakeWordSystem.OPENWAKEWORD:
         oww_dir = _LOCAL_DIR / "wyoming-openwakeword"
         if not oww_dir.exists():
             success = run_with_gauge(
@@ -410,17 +425,153 @@ def install_wake_word(settings: Settings) -> None:
                     "See local/installer.log for details."
                 )
 
-                settings.wake_word_system = None
-                settings.save()
-
                 try:
                     shutil.rmtree(oww_dir)
                 except Exception:
                     pass
-    elif settings.wake_word_system == WakeWordSystem.PORCUPINE1:
+
+                return
+
+        settings.wake_word_system = wake_word_system
+        settings.wake_word.setdefault(WakeWordSystem.OPENWAKEWORD, "ok_nabu")
+        settings.save()
+    elif wake_word_system == WakeWordSystem.PORCUPINE1:
+        porcupine1_dir = _LOCAL_DIR / "wyoming-porcupine1"
+        if not porcupine1_dir.exists():
+            success = run_with_gauge(
+                "Installing porcupine1",
+                [
+                    [
+                        "git",
+                        "clone",
+                        "https://github.com/rhasspy/wyoming-porcupine1.git",
+                        str(porcupine1_dir),
+                    ],
+                    [str(porcupine1_dir / "script" / "setup")],
+                ],
+            )
+
+            if success:
+                msgbox("porcupine1 installed successfully")
+            else:
+                msgbox(
+                    "An error occurred while installing porcupine1. "
+                    "See local/installer.log for details."
+                )
+
+                try:
+                    shutil.rmtree(porcupine1_dir)
+                except Exception:
+                    pass
+
+                return
+
+        settings.wake_word_system = wake_word_system
         settings.wake_word.setdefault(WakeWordSystem.PORCUPINE1, "porcupine")
+        settings.save()
     elif settings.wake_word_system == WakeWordSystem.SNOWBOY:
+        snowboy_dir = _LOCAL_DIR / "wyoming-snowboy"
+        if not snowboy_dir.exists():
+            success = run_with_gauge(
+                "Installing snowboy",
+                [
+                    [
+                        "git",
+                        "clone",
+                        "https://github.com/rhasspy/wyoming-snowboy.git",
+                        str(snowboy_dir),
+                    ],
+                    [str(snowboy_dir / "script" / "setup")],
+                ],
+            )
+
+            if success:
+                msgbox("snowboy installed successfully")
+            else:
+                msgbox(
+                    "An error occurred while installing snowboy. "
+                    "See local/installer.log for details."
+                )
+
+                try:
+                    shutil.rmtree(snowboy_dir)
+                except Exception:
+                    pass
+
+                return
+
+        settings.wake_word_system = wake_word_system
         settings.wake_word.setdefault(WakeWordSystem.SNOWBOY, "snowboy")
+        settings.save()
+
+
+def select_wake_word(settings: Settings) -> None:
+    if settings.wake_word_system == WakeWordSystem.OPENWAKEWORD:
+        wake_word = radiolist(
+            "Wake Word:",
+            [
+                ("ok_nabu", "ok nabu"),
+                ("hey_jarvis", "hey jarvis"),
+                ("alexa", "alexa"),
+                ("hey_mycroft", "hey mycroft"),
+                ("community", "Community Wake Words"),
+            ],
+            settings.wake_word.get(WakeWordSystem.OPENWAKEWORD),
+        )
+
+        if wake_word is not None:
+            settings.wake_word[WakeWordSystem.OPENWAKEWORD] = wake_word
+            settings.save()
+
+    elif settings.wake_word_system == WakeWordSystem.PORCUPINE1:
+        wake_word = radiolist(
+            "Wake Word:",
+            [
+                ("ok_nabu", "ok nabu"),
+                ("hey_jarvis", "hey jarvis"),
+                ("alexa", "alexa"),
+                ("hey_mycroft", "hey mycroft"),
+                ("community", "Community Wake Words"),
+            ],
+            settings.wake_word.get(WakeWordSystem.OPENWAKEWORD),
+        )
+
+        if wake_word is not None:
+            settings.wake_word[WakeWordSystem.OPENWAKEWORD] = wake_word
+            settings.save()
+
+    elif settings.wake_word_system == WakeWordSystem.PORCUPINE1:
+        wake_word = radiolist(
+            "Wake Word:",
+            [
+                ("porcupine", "porcupine"),
+            ],
+            settings.wake_word.get(WakeWordSystem.PORCUPINE1),
+        )
+
+        if wake_word is not None:
+            settings.wake_word[WakeWordSystem.PORCUPINE1] = wake_word
+            settings.save()
+
+    elif settings.wake_word_system == WakeWordSystem.SNOWBOY:
+        wake_word = radiolist(
+            "Wake Word:",
+            [
+                ("snowboy", "snowboy"),
+                ("jarvis", "jarvis"),
+                ("alexa", "alexa"),
+                ("smart_mirror", "smart mirror"),
+                ("view_glass", "view glass"),
+                ("hey_extreme", "hey extreme"),
+                ("neoya", "neoya"),
+                ("subex", "subex"),
+            ],
+            settings.wake_word.get(WakeWordSystem.SNOWBOY),
+        )
+
+        if wake_word is not None:
+            settings.wake_word[WakeWordSystem.SNOWBOY] = wake_word
+            settings.save()
 
 
 # -----------------------------------------------------------------------------
@@ -445,11 +596,139 @@ def set_satellite_type(settings: Settings) -> None:
         ],
         settings.satellite_type,
     )
+
+    if satellite_type == SatelliteType.VAD:
+        result = run_with_gauge(
+            "Installing vad...",
+            [
+                pip_install(
+                    "-r", str(_PROGRAM_DIR / "requirements_vad.txt")
+                )
+            ],
+        )
+        if not result:
+            msgbox(
+                "An error occurred while installed vad. "
+                "See local/installer.log for details."
+            )
+            return
+
     if satellite_type is not None:
         settings.satellite_type = satellite_type
         settings.save()
 
 
+# -----------------------------------------------------------------------------
+# Services
+# -----------------------------------------------------------------------------
+
+
+def generate_services(settings: Settings) -> None:
+    if settings.microphone_device is None:
+        msgbox("Please configure microphone")
+        return
+
+    services_dir = _LOCAL_DIR / "services"
+    services_dir.mkdir(parents=True, exist_ok=True)
+
+    user = subprocess.check_output(["id", "--name", "-u"], text=True).strip()
+    group = subprocess.check_output(["id", "--name", "-g"], text=True).strip()
+
+    satellite_command = [
+        str(_PROGRAM_DIR / "script" / "run"),
+        "--name",
+        settings.satellite_name,
+        "--uri",
+        "tcp://0.0.0.0:10700",
+        "--mic-command",
+        f"arecord -D {settings.microphone_device} -q -r 16000 -c 1 -f S16_LE -t raw",
+    ]
+
+    if settings.satellite_type == SatelliteType.VAD:
+        satellite_command.append("--vad")
+
+    satellite_command_str = shlex.join(satellite_command)
+
+    with open(
+        services_dir / "wyoming-satellite.service", "w", encoding="utf-8"
+    ) as service_file:
+        print("[Unit]", file=service_file)
+        print("Description=Wyoming Satellite", file=service_file)
+        print("Wants=network-online.target", file=service_file)
+        print("After=network-online.target", file=service_file)
+        print("", file=service_file)
+        print("[Service]", file=service_file)
+        print("Type=simple", file=service_file)
+        print(f"User={user}", file=service_file)
+        print(f"Group={group}", file=service_file)
+        print(f"ExecStart={satellite_command_str}", file=service_file)
+        print(f"WorkingDirectory={_PROGRAM_DIR}", file=service_file)
+        print("Restart=always", file=service_file)
+        print("RestartSec=1", file=service_file)
+        print("", file=service_file)
+        print("[Install]", file=service_file)
+        print("WantedBy=default.target", file=service_file)
+
+    msgbox("Services generated")
+
+
+def install_services(settings: Settings) -> None:
+    services_dir = _LOCAL_DIR / "services"
+    satellite_service_path = services_dir / "wyoming-satellite.service"
+
+    if not satellite_service_path.exists():
+        msgbox("Please generate services")
+        return
+
+    password = paswordbox("sudo password:")
+
+    run_with_gauge(
+        "Stopping Services...",
+        [
+            [
+                "sudo",
+                "-S",
+                "systemctl",
+                "disable",
+                "--now",
+                f"wyoming-{service}.service",
+            ]
+            for service in ("satellite", "openwakeword", "porcupine1", "snowboy")
+        ],
+        sudo_password=password,
+    )
+
+    installed_services = ["satellite"]
+    install_commands = [["sudo", "-S", "systemctl", "daemon-reload"]]
+    for service in installed_services:
+        service_filename = f"wyoming-{service}.service"
+        install_commands.append(
+            [
+                "sudo",
+                "-S",
+                "cp",
+                str(services_dir / service_filename),
+                "/etc/systemd/system/",
+            ]
+        )
+        install_commands.append(
+            ["sudo", "-S", "systemctl", "enable", "--now", service_filename]
+        )
+
+    success = run_with_gauge(
+        "Installing Services...", install_commands, sudo_password=password
+    )
+    if success:
+        msgbox("Successfully installed services")
+    else:
+        msgbox(
+            "An error occurred while installing services. "
+            "See local/installer.log for details."
+        )
+
+
+# -----------------------------------------------------------------------------
+# whiptail
 # -----------------------------------------------------------------------------
 
 
@@ -490,6 +769,10 @@ def menu(text: str, items: List[ItemType], *args) -> Optional[str]:
 
 def inputbox(text: str, init: Optional[str] = None) -> Optional[str]:
     return whiptail("--inputbox", text, HEIGHT, WIDTH, init or "")
+
+
+def paswordbox(text: str) -> Optional[str]:
+    return whiptail("--passwordbox", text, HEIGHT, WIDTH)
 
 
 def radiolist(
@@ -602,7 +885,9 @@ def gauge(text: str, seconds: int, parts: int = 20) -> None:
     proc.communicate()
 
 
-def run_with_gauge(text: str, commands: List[List[str]]) -> bool:
+def run_with_gauge(
+    text: str, commands: List[List[str]], sudo_password: Optional[str] = None
+) -> bool:
     proc = subprocess.Popen(
         ["whiptail", "--title", TITLE, "--gauge", text, HEIGHT, WIDTH, "0"],
         stdin=subprocess.PIPE,
@@ -616,7 +901,7 @@ def run_with_gauge(text: str, commands: List[List[str]]) -> bool:
 
     with ThreadPoolExecutor() as executor:
         for command in commands:
-            future = executor.submit(_run_command, command)
+            future = executor.submit(_run_command, command, sudo_password)
             while not future.done():
                 time.sleep(seconds / parts)
                 percent += int(100 / parts)
@@ -633,15 +918,21 @@ def run_with_gauge(text: str, commands: List[List[str]]) -> bool:
     return True
 
 
-def _run_command(command: List[str]) -> bool:
+def _run_command(command: List[str], sudo_password: Optional[str] = None) -> bool:
     try:
+        assert command
+        proc_input: Optional[str] = None
+        if (command[0] == "sudo") and (sudo_password is not None):
+            proc_input = sudo_password
+
         proc = subprocess.Popen(
             command,
+            stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             text=True,
         )
-        _stdout, stderr = proc.communicate()
+        _stdout, stderr = proc.communicate(proc_input)
         if proc.returncode != 0:
             _LOGGER.error("Error running command: %s", command)
             _LOGGER.error(stderr)
@@ -651,6 +942,17 @@ def _run_command(command: List[str]) -> bool:
         return False
 
     return True
+
+
+def pip_install(*args) -> List[str]:
+    return [
+        str(_PROGRAM_DIR / ".venv" / "bin" / "pip3"),
+        "install",
+        "--extra-index-url",
+        "https://www.piwheels.org/simple",
+        "-f",
+        "https://synesthesiam.github.io/prebuilt-apps/",
+    ] + list(args)
 
 
 # -----------------------------------------------------------------------------
