@@ -5,5 +5,6 @@
 !script/setup
 !script/run
 !wyoming_satellite/*.py
+!wyoming_satellite/utils
 !docker/run
 !sounds/*.wav
