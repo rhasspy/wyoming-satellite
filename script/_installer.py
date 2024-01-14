@@ -3,12 +3,12 @@ import array
 import math
 import logging
 import json
-import functools
 import shlex
 import subprocess
 import shutil
 import sys
 import time
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, Future
 from enum import Enum
 from dataclasses import dataclass, fields, asdict, field
@@ -29,7 +29,7 @@ WIDTH = "75"
 HEIGHT = "20"
 LIST_HEIGHT = "12"
 
-ItemType = Union[str, Tuple[str, str]]
+ItemType = Union[str, Tuple[Any, str]]
 
 
 class SatelliteType(str, Enum):
@@ -47,6 +47,9 @@ class WakeWordSystem(str, Enum):
 @dataclass
 class Settings:
     microphone_device: Optional[str] = None
+    noise_suppression_level: int = 0
+    auto_gain: int = 0
+    mic_volume_multiplier: float = 1.0
 
     sound_device: Optional[str] = None
     feedback_sounds: List[str] = field(default_factory=list)
@@ -56,6 +59,8 @@ class Settings:
 
     satellite_name: str = "Wyoming Satellite"
     satellite_type: SatelliteType = SatelliteType.ALWAYS_STREAMING
+
+    debug_enabled: bool = False
 
     @staticmethod
     def load() -> "Settings":
@@ -100,53 +105,107 @@ def main() -> None:
             "Installing satellite base...", [[str(_PROGRAM_DIR / "script" / "setup")]]
         )
 
+    choice: Optional[str] = None
     while True:
-        choice = main_menu(settings)
+        choice = main_menu(choice)
 
-        if choice == "mic":
+        if choice == "satellite":
+            configure_satellite(settings)
+        elif choice == "microphone":
             configure_microphone(settings)
-        elif choice == "snd":
-            configure_sound(settings)
+        elif choice == "speakers":
+            configure_speakers(settings)
         elif choice == "wake":
             configure_wake_word(settings)
-        elif choice == "name":
-            set_satellite_name(settings)
-        elif choice == "type":
-            set_satellite_type(settings)
-        elif choice == "generate":
-            generate_services(settings)
-        elif choice == "install":
-            install_services(settings)
+        elif choice == "services":
+            configure_services(settings)
+        elif choice == "drivers":
+            install_drivers(settings)
         else:
             break
 
 
+def main_menu(last_choice: Optional[str]) -> Optional[str]:
+    items: List[ItemType] = [
+        ("satellite", "Satellite"),
+        ("microphone", "Microphone"),
+        ("speakers", "Speakers"),
+        ("wake", "Wake Word"),
+        ("services", "Services"),
+        ("drivers", "Drivers"),
+    ]
+
+    return menu(
+        "Main",
+        items,
+        selected_item=last_choice,
+        menu_args=["--ok-button", "Select", "--cancel-button", "Exit"],
+    )
+
+
+# -----------------------------------------------------------------------------
+# Satellite
 # -----------------------------------------------------------------------------
 
 
-def main_menu(settings: Settings) -> Optional[str]:
-    items = [("mic", "Configure Microphone"), ("snd", "Configure Sound")]
+def configure_satellite(settings: Settings) -> None:
+    choice: Optional[str] = None
+    while True:
+        choice = satellite_menu(choice)
 
-    if settings.satellite_type == SatelliteType.WAKE:
-        items.append(("wake", "Configure Wake Word"))
+        if choice == "name":
+            set_satellite_name(settings)
+        elif choice == "type":
+            set_satellite_type(settings)
+        else:
+            break
 
-    items.extend(
-        [
-            ("name", "Set Satellite Name"),
-            ("type", "Set Satellite Type"),
-            ("generate", "Generate Services"),
-            ("install", "Install Services"),
-        ]
-    )
 
+def satellite_menu(last_choice: Optional[str]) -> Optional[str]:
     return menu(
-        "Main Menu",
-        items,
-        "--ok-button",
-        "Select",
-        "--cancel-button",
-        "Exit",
+        "Main > Satellite",
+        [
+            ("name", "Name"),
+            ("type", "Type"),
+        ],
+        selected_item=last_choice,
+        menu_args=["--ok-button", "Select", "--cancel-button", "Back"],
     )
+
+
+def set_satellite_name(settings: Settings) -> None:
+    name = inputbox("Satellite Name:", settings.satellite_name)
+    if name:
+        settings.satellite_name = name
+        settings.save()
+
+
+def set_satellite_type(settings: Settings) -> None:
+    satellite_type = radiolist(
+        "Satellite Type:",
+        [
+            (SatelliteType.ALWAYS_STREAMING, "Always streaming"),
+            (SatelliteType.VAD, "Voice activity detection"),
+            (SatelliteType.WAKE, "Local wake word detection"),
+        ],
+        settings.satellite_type,
+    )
+
+    if satellite_type == SatelliteType.VAD:
+        result = run_with_gauge(
+            "Installing vad...",
+            [pip_install("-r", str(_PROGRAM_DIR / "requirements_vad.txt"))],
+        )
+        if not result:
+            msgbox(
+                "An error occurred while installed vad. "
+                "See local/installer.log for details."
+            )
+            return
+
+    if satellite_type is not None:
+        settings.satellite_type = satellite_type
+        settings.save()
 
 
 # -----------------------------------------------------------------------------
@@ -155,10 +214,12 @@ def main_menu(settings: Settings) -> Optional[str]:
 
 
 def configure_microphone(settings: Settings) -> None:
+    choice: Optional[str] = None
     while True:
-        choice = microphone_menu()
+        choice = microphone_menu(choice)
 
         if choice == "detect":
+            # Automatically detect microphone with hightest RMS
             best_device: Optional[str] = None
             best_rms: Optional[float] = None
 
@@ -185,6 +246,7 @@ def configure_microphone(settings: Settings) -> None:
             else:
                 msgbox("Audio was not detected from any microphone")
         elif choice == "list":
+            # arecord -L
             microphone_device = radiolist(
                 "Select ALSA Device:",
                 get_microphone_devices(),
@@ -200,49 +262,49 @@ def configure_microphone(settings: Settings) -> None:
             if microphone_device:
                 settings.microphone_device = microphone_device
                 settings.save()
-        elif choice == "respeaker":
-            if yesno(
-                "ReSpeaker drivers for the Raspberry Pi will now be compiled and installed. "
-                "This will take a while and require a reboot. "
-                "Continue?"
-            ):
-                password = paswordbox("sudo password:")
-                run_with_gauge(
-                    "Installing drivers...",
-                    [
-                        [
-                            "sudo",
-                            "-S",
-                            str(_PROGRAM_DIR / "etc" / "install-respeaker-drivers.sh"),
-                        ]
-                    ],
-                    sudo_password=password,
-                )
+        elif choice == "enhancements":
+            configure_audio_enhancements(settings)
+        # elif choice == "respeaker":
+        #     if yesno(
+        #         "ReSpeaker drivers for the Raspberry Pi will now be compiled and installed. "
+        #         "This will take a while and require a reboot. "
+        #         "Continue?"
+        #     ):
+        #         password = paswordbox("sudo password:")
+        #         run_with_gauge(
+        #             "Installing drivers...",
+        #             [
+        #                 [
+        #                     "sudo",
+        #                     "-S",
+        #                     str(_PROGRAM_DIR / "etc" / "install-respeaker-drivers.sh"),
+        #                 ]
+        #             ],
+        #             sudo_password=password,
+        #         )
 
-                msgbox(
-                    "Driver installation complete. "
-                    "Please reboot your Raspberry Pi and re-run the installer. "
-                    'Once rebooted, select the "seeed" microphone.'
-                )
+        #         msgbox(
+        #             "Driver installation complete. "
+        #             "Please reboot your Raspberry Pi and re-run the installer. "
+        #             'Once rebooted, select the "seeed" microphone.'
+        #         )
 
-                sys.exit(0)
+        #         sys.exit(0)
         else:
             break
 
 
-def microphone_menu() -> Optional[str]:
+def microphone_menu(last_choice: Optional[str]) -> Optional[str]:
     return menu(
-        "Configure Microphone",
+        "Main > Microphone",
         [
             ("detect", "Autodetect"),
             ("list", "Select From List"),
             ("manual", "Enter Manually"),
-            ("respeaker", "Install ReSpeaker Drivers"),
+            ("enhancements", "Audio Enhancements"),
         ],
-        "--ok-button",
-        "Select",
-        "--cancel-button",
-        "Back",
+        selected_item=last_choice,
+        menu_args=["--ok-button", "Select", "--cancel-button", "Back"],
     )
 
 
@@ -289,6 +351,69 @@ def _record_proc(device: str) -> float:
         _LOGGER.exception("Error recording from device: %s", device)
 
     return 0
+
+
+def configure_audio_enhancements(settings: Settings) -> None:
+    choice: Optional[str] = None
+    while True:
+        choice = audio_enhancements_menu(choice)
+
+        if choice == "noise":
+            result = radiolist(
+                "Noise Suppression Level",
+                [(0, "Off"), (1, "Low"), (2, "Medium"), (3, "High"), (4, "Maximum")],
+                settings.noise_suppression_level,
+            )
+            if result is not None:
+                settings.noise_suppression_level = result
+                settings.save()
+        elif choice == "gain":
+            while True:
+                result = inputbox("Auto Gain (0-31 dbFS)", settings.auto_gain)
+                if result is not None:
+                    try:
+                        auto_gain = int(result)
+                    except ValueError:
+                        msgbox("Invalid value")
+                        continue
+
+                    if 0 <= auto_gain <= 31:
+                        settings.auto_gain = auto_gain
+                        settings.save()
+                        break
+
+                    msgbox("Must be 0-31")
+        elif choice == "multiplier":
+            while True:
+                result = inputbox("Volume Multipler (1 = default)", settings.mic_volume_multiplier)
+                if result is not None:
+                    try:
+                        volume_multiplier = float(result)
+                    except ValueError:
+                        msgbox("Invalid value")
+                        continue
+
+                    if volume_multiplier > 0:
+                        settings.mic_volume_multiplier = volume_multiplier
+                        settings.save()
+                        break
+
+                    msgbox("Must be > 0")
+        else:
+            break
+
+
+def audio_enhancements_menu(last_choice: Optional[str]) -> Optional[str]:
+    return menu(
+        "Main > Microphone > Audio Enhancements",
+        [
+            ("noise", "Noise Suppression"),
+            ("gain", "Auto Gain"),
+            ("multiplier", "Volume Multiplier"),
+        ],
+        selected_item=last_choice,
+        menu_args=["--ok-button", "Select", "--cancel-button", "Back"],
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -344,10 +469,7 @@ def sound_menu() -> Optional[str]:
             ("disable", "Disable Sound"),
             ("feedback", "Toggle Feedback Sounds"),
         ],
-        "--ok-button",
-        "Select",
-        "--cancel-button",
-        "Back",
+        menu_args=["--ok-button", "Select", "--cancel-button", "Back"],
     )
 
 
@@ -368,6 +490,10 @@ def get_sound_devices() -> List[str]:
 
 
 def configure_wake_word(settings: Settings) -> None:
+    if settings.satellite_type != SatelliteType.WAKE:
+        msgbox("Satellite type is not set to local wake word.")
+        return
+
     while True:
         choice = wake_word_menu(settings)
 
@@ -378,7 +504,7 @@ def configure_wake_word(settings: Settings) -> None:
                 settings.wake_word_system,
             )
             if wake_word_system is not None:
-                install_wake_word(settings, wake_word_system)
+                install_wake_word(settings, WakeWordSystem(wake_word_system))
         elif choice == "wake_word":
             select_wake_word(settings)
         else:
@@ -393,10 +519,7 @@ def wake_word_menu(settings: Settings) -> Optional[str]:
     return menu(
         "Configure Wake Word",
         items,
-        "--ok-button",
-        "Select",
-        "--cancel-button",
-        "Back",
+        menu_args=["--ok-button", "Select", "--cancel-button", "Back"],
     )
 
 
@@ -575,50 +698,6 @@ def select_wake_word(settings: Settings) -> None:
 
 
 # -----------------------------------------------------------------------------
-# Satellite
-# -----------------------------------------------------------------------------
-
-
-def set_satellite_name(settings: Settings) -> None:
-    name = inputbox("Satellite Name:", settings.satellite_name)
-    if name:
-        settings.satellite_name = name
-        settings.save()
-
-
-def set_satellite_type(settings: Settings) -> None:
-    satellite_type = radiolist(
-        "Satellite Type:",
-        [
-            (SatelliteType.ALWAYS_STREAMING, "Always streaming"),
-            (SatelliteType.VAD, "Voice activity detection"),
-            (SatelliteType.WAKE, "Local wake word detection"),
-        ],
-        settings.satellite_type,
-    )
-
-    if satellite_type == SatelliteType.VAD:
-        result = run_with_gauge(
-            "Installing vad...",
-            [
-                pip_install(
-                    "-r", str(_PROGRAM_DIR / "requirements_vad.txt")
-                )
-            ],
-        )
-        if not result:
-            msgbox(
-                "An error occurred while installed vad. "
-                "See local/installer.log for details."
-            )
-            return
-
-    if satellite_type is not None:
-        settings.satellite_type = satellite_type
-        settings.save()
-
-
-# -----------------------------------------------------------------------------
 # Services
 # -----------------------------------------------------------------------------
 
@@ -632,9 +711,8 @@ def generate_services(settings: Settings) -> None:
     services_dir.mkdir(parents=True, exist_ok=True)
 
     user = subprocess.check_output(["id", "--name", "-u"], text=True).strip()
-    group = subprocess.check_output(["id", "--name", "-g"], text=True).strip()
 
-    satellite_command = [
+    satellite_command: List[str] = [
         str(_PROGRAM_DIR / "script" / "run"),
         "--name",
         settings.satellite_name,
@@ -643,9 +721,75 @@ def generate_services(settings: Settings) -> None:
         "--mic-command",
         f"arecord -D {settings.microphone_device} -q -r 16000 -c 1 -f S16_LE -t raw",
     ]
+    satellite_requires: List[str] = []
+
+    if settings.sound_device is not None:
+        # Audio output
+        satellite_command.append(
+            f"aplay -D {settings.sound_device} -q -r 16000 -c 1 -f S16_LE -t raw"
+        )
+
+        for sound_name in settings.feedback_sounds:
+            # Try local/sounds first
+            sound_path = _LOCAL_DIR / "sounds" / f"{sound_name}.wav"
+            if not sound_path.exists():
+                sound_path = _PROGRAM_DIR / "sounds" / f"{sound_name}.wav"
+
+            satellite_command.extend([f"--{sound_name}-wav", str(sound_path)])
 
     if settings.satellite_type == SatelliteType.VAD:
+        # Voice activity detect
         satellite_command.append("--vad")
+    elif settings.satellite_type == SatelliteType.WAKE:
+        # Local wake word detection
+        assert settings.wake_word_system is not None, "Wake word system not set"
+        wake_word = settings.wake_word.get(settings.wake_word_system)
+        assert wake_word, "No wake word set"
+
+        wake_word_service = "wyoming-" + str(settings.wake_word_system).lower()
+        wake_word_dir = _LOCAL_DIR / wake_word_service
+        wake_word_command = [
+            str(wake_word_dir / "script" / "run"),
+            "--uri",
+            "tcp://127.0.0.1:10400",
+        ]
+
+        if settings.debug_enabled:
+            wake_word_command.append("--debug")
+
+        wake_word_command_str = shlex.join(wake_word_command)
+
+        with open(
+            services_dir / f"{wake_word_service}.service", "w", encoding="utf-8"
+        ) as service_file:
+            print("[Unit]", file=service_file)
+            print(f"Description={settings.wake_word_system}", file=service_file)
+            print("", file=service_file)
+            print("[Service]", file=service_file)
+            print("Type=simple", file=service_file)
+            print(f"User={user}", file=service_file)
+            print(f"ExecStart={wake_word_command_str}", file=service_file)
+            print(f"WorkingDirectory={wake_word_dir}", file=service_file)
+            print("Restart=always", file=service_file)
+            print("RestartSec=1", file=service_file)
+            print("", file=service_file)
+            print("[Install]", file=service_file)
+            print("WantedBy=default.target", file=service_file)
+
+        satellite_command.extend(
+            [
+                "--wake-uri",
+                "tcp://127.0.0.1:10400",
+                "--wake-word-name",
+                wake_word,
+            ]
+        )
+        satellite_requires.append(f"{wake_word_service}.service")
+
+    if settings.debug_enabled:
+        satellite_command.extend(
+            ["--debug", "--debug-recording-dir", str(_LOCAL_DIR / "debug-recording")]
+        )
 
     satellite_command_str = shlex.join(satellite_command)
 
@@ -656,11 +800,13 @@ def generate_services(settings: Settings) -> None:
         print("Description=Wyoming Satellite", file=service_file)
         print("Wants=network-online.target", file=service_file)
         print("After=network-online.target", file=service_file)
+        for requires in satellite_requires:
+            print(f"Requires={requires}", file=service_file)
+
         print("", file=service_file)
         print("[Service]", file=service_file)
         print("Type=simple", file=service_file)
         print(f"User={user}", file=service_file)
-        print(f"Group={group}", file=service_file)
         print(f"ExecStart={satellite_command_str}", file=service_file)
         print(f"WorkingDirectory={_PROGRAM_DIR}", file=service_file)
         print("Restart=always", file=service_file)
@@ -745,11 +891,17 @@ def whiptail(*args) -> Optional[str]:
     return stderr.decode("utf-8")
 
 
-def menu(text: str, items: List[ItemType], *args) -> Optional[str]:
+def menu(
+    text: str,
+    items: Sequence[ItemType],
+    selected_item: Optional[str] = None,
+    menu_args: Optional[Sequence[str]] = None,
+) -> Optional[str]:
     assert items, "No items"
 
-    item_map: Dict[str, ItemType] = {}
+    item_map: Dict[Optional[str], str] = {}
     item_args: List[str] = []
+    selected_tag: Optional[str] = None
     for i, item in enumerate(items):
         item_id = str(i)
         item_args.append(item_id)
@@ -757,18 +909,28 @@ def menu(text: str, items: List[ItemType], *args) -> Optional[str]:
         if isinstance(item, str):
             item_map[item_id] = item
             item_args.append(item)
+
+            if selected_item == item:
+                selected_tag = item_id
         else:
             item_map[item_id] = item[0]
             item_args.append(item[1])
 
+            if selected_item == item[0]:
+                selected_tag = item_id
+
+    menu_args = menu_args or []
+    if selected_tag is not None:
+        menu_args.extend(["--default-item", selected_tag])
+
     result = whiptail(
-        "--notags", *args, "--menu", text, HEIGHT, WIDTH, LIST_HEIGHT, *item_args
+        "--notags", *menu_args, "--menu", text, HEIGHT, WIDTH, LIST_HEIGHT, *item_args
     )
     return item_map.get(result)
 
 
-def inputbox(text: str, init: Optional[str] = None) -> Optional[str]:
-    return whiptail("--inputbox", text, HEIGHT, WIDTH, init or "")
+def inputbox(text: str, init: Optional[Any] = None) -> Optional[str]:
+    return whiptail("--inputbox", text, HEIGHT, WIDTH, str(init) or "")
 
 
 def paswordbox(text: str) -> Optional[str]:
@@ -777,7 +939,7 @@ def paswordbox(text: str) -> Optional[str]:
 
 def radiolist(
     text: str,
-    items: List[ItemType],
+    items: Sequence[ItemType],
     selected_item: Any,
     *args,
 ) -> Optional[str]:
@@ -818,8 +980,8 @@ def radiolist(
 
 def checklist(
     text: str,
-    items: List[ItemType],
-    selected_items: List[Any],
+    items: Sequence[ItemType],
+    selected_items: Sequence[Any],
     *args,
 ) -> List[str]:
     assert items, "No items"
@@ -886,7 +1048,7 @@ def gauge(text: str, seconds: int, parts: int = 20) -> None:
 
 
 def run_with_gauge(
-    text: str, commands: List[List[str]], sudo_password: Optional[str] = None
+    text: str, commands: Sequence[Sequence[str]], sudo_password: Optional[str] = None
 ) -> bool:
     proc = subprocess.Popen(
         ["whiptail", "--title", TITLE, "--gauge", text, HEIGHT, WIDTH, "0"],
@@ -918,7 +1080,7 @@ def run_with_gauge(
     return True
 
 
-def _run_command(command: List[str], sudo_password: Optional[str] = None) -> bool:
+def _run_command(command: Sequence[str], sudo_password: Optional[str] = None) -> bool:
     try:
         assert command
         proc_input: Optional[str] = None
