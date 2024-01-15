@@ -119,6 +119,17 @@ def apply_settings(settings: Settings) -> None:
             error("installing audio enhancements")
             return
 
+    if settings.satellite.event_service_command and (("2mic" in settings.satellite.event_service_command) or ("4mic" in settings.satellite.event_service_command)):
+        result = run_with_gauge(
+            "Installing event requirements...",
+            [
+                pip_install("-r", str(PROGRAM_DIR / "requirements_respeaker.txt"))
+            ],
+        )
+        if not result:
+            error("installing event requirements")
+            return
+
     generate_services(settings)
 
     password = passwordbox("sudo password:")

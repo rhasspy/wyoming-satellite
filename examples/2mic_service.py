@@ -119,6 +119,7 @@ class LEDsEventHandler(AsyncEventHandler):
                 self.color(_GREEN)
                 await asyncio.sleep(0.3)
                 self.color(_BLACK)
+                await asyncio.sleep(0.3)
         elif SatelliteDisconnected.is_type(event.type):
             self.color(_RED)
 

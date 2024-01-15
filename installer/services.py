@@ -222,6 +222,9 @@ def install_services(settings: Settings, password: str):
         assert settings.wake.system is not None, "No wake word system"
         installed_services.append(WakeWordSystem(settings.wake.system).value.lower())
 
+    if settings.satellite.event_service_command:
+        installed_services.append("event")
+
     install_commands = []
     for service in installed_services:
         service_filename = f"wyoming-{service}.service"

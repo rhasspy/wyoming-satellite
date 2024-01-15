@@ -84,17 +84,25 @@ def configure_feedback(settings: Settings) -> None:
     while True:
         choice = menu("Main > Satellite > Feedback", [("respeaker", "ReSpeaker")])
         if choice == "respeaker":
+            selected_service: Optional[str] = None
+            if settings.satellite.event_service_command:
+                if "2mic" in settings.satellite.event_service_command[0]:
+                    selected_service = "2mic"
+                elif "4mic" in settings.satellite.event_service_command[0]:
+                    selected_service = "4mic"
+
             event_service = radiolist(
                 "Event Service:",
                 [
                     ("2mic", "2mic LEDs"),
                     ("4mic", "4mic LEDs"),
                 ],
+                selected_service,
             )
 
             if event_service is not None:
                 settings.satellite.event_service_command = [
-                    str(PROGRAM_DIR / "script" / "run_{event_service}"),
+                    str(PROGRAM_DIR / "script" / f"run_{event_service}"),
                     "--uri",
                     "tcp://127.0.0.1:10500",
                 ]
