@@ -40,7 +40,7 @@ class SatelliteEventHandler(AsyncEventHandler):
 
         if self.satellite.server_id is None:
             # Take over after a problem occurred
-            self.satellite.set_server(self.client_id, self.writer)
+            await self.satellite.set_server(self.client_id, self.writer)
         elif self.satellite.server_id != self.client_id:
             # New connection
             _LOGGER.debug("Connection cancelled: %s", self.client_id)
@@ -53,4 +53,4 @@ class SatelliteEventHandler(AsyncEventHandler):
     async def disconnect(self) -> None:
         """Server disconnect."""
         if self.satellite.server_id == self.client_id:
-            self.satellite.clear_server()
+            await self.satellite.clear_server()

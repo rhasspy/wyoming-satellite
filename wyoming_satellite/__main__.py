@@ -193,6 +193,14 @@ async def main() -> None:
         "--error-command",
         help="Command to run when an error occurs",
     )
+    parser.add_argument(
+        "--connected-command",
+        help="Command to run when connected to the server",
+    )
+    parser.add_argument(
+        "--disconnected-command",
+        help="Command to run when disconnected from the server",
+    )
 
     # Sounds
     parser.add_argument(
@@ -326,6 +334,8 @@ async def main() -> None:
             tts_start=split_command(args.tts_start_command),
             tts_stop=split_command(args.tts_stop_command),
             error=split_command(args.error_command),
+            connected=split_command(args.connected_command),
+            disconnected=split_command(args.disconnected_command),
         ),
         debug_recording_dir=args.debug_recording_dir,
     )
@@ -368,7 +378,7 @@ async def main() -> None:
             args.zeroconf_host,
         )
 
-    satellite_task = asyncio.create_task(satellite.run())
+    satellite_task = asyncio.create_task(satellite.run(), name="satellite run")
 
     try:
         await server.run(partial(SatelliteEventHandler, wyoming_info, satellite, args))

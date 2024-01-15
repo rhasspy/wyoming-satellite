@@ -36,6 +36,7 @@ class SatelliteSettings(DataClassJsonMixin):
     name: str = "Wyoming Satellite"
     type: SatelliteType = SatelliteType.ALWAYS_STREAMING
     debug: bool = False
+    event_service_command: Optional[List[str]] = None
 
 
 @dataclass

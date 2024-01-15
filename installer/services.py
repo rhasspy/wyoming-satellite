@@ -158,6 +158,29 @@ def generate_services(settings: Settings) -> None:
         )
         satellite_requires.append(f"{wake_word_service}.service")
 
+    if settings.satellite.event_service_command:
+        event_service = "wyoming-event"
+        event_command_str = shlex.join(settings.satellite.event_service_command)
+        with open(
+            SERVICES_DIR / f"{event_service}.service", "w", encoding="utf-8"
+        ) as service_file:
+            print("[Unit]", file=service_file)
+            print(f"Description=Event service", file=service_file)
+            print("", file=service_file)
+            print("[Service]", file=service_file)
+            print("Type=simple", file=service_file)
+            print(f"User={user_name}", file=service_file)
+            print(f"ExecStart={event_command_str}", file=service_file)
+            print(f"WorkingDirectory={PROGRAM_DIR}", file=service_file)
+            print("Restart=always", file=service_file)
+            print("RestartSec=1", file=service_file)
+            print("", file=service_file)
+            print("[Install]", file=service_file)
+            print("WantedBy=default.target", file=service_file)
+
+        satellite_command.extend(["--event-uri", "tcp://127.0.0.1:10500"])
+        satellite_requires.append(f"{event_service}.service")
+
     if settings.satellite.debug:
         satellite_command.extend(
             ["--debug", "--debug-recording-dir", str(LOCAL_DIR / "debug-recording")]

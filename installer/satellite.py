@@ -1,7 +1,7 @@
 """Satellite settings."""
 from typing import Optional
 
-from .const import SatelliteType, Settings
+from .const import SatelliteType, Settings, PROGRAM_DIR
 from .whiptail import error, inputbox, menu, passwordbox, radiolist, run_with_gauge
 
 
@@ -29,20 +29,22 @@ def configure_satellite(settings: Settings) -> None:
             if satellite_type is not None:
                 settings.satellite.type = SatelliteType(satellite_type)
                 settings.save()
-        elif choice in ("stop", "start"):
+        elif choice == "feedback":
+            configure_feedback(settings)
+        elif choice in ("restart", "stop", "start"):
             password = passwordbox("sudo password:")
             if not password:
                 continue
 
             command = ["sudo", "-S", "systemctl", choice, "wyoming-satellite.service"]
-            text = (
-                "Stopping satellite..." if choice == "stop" else "Starting satellite..."
+            text = {"restart": "Restarting", "stop": "Stopping", "start": "Starting"}[
+                choice
+            ]
+            success = run_with_gauge(
+                f"{text} satellite...", [command], sudo_password=password
             )
-            success = run_with_gauge(text, [command], sudo_password=password)
             if not success:
-                error(
-                    "stopping satellite" if choice == "stop" else "starting satellite"
-                )
+                error(f"{text.lower()} satellite")
         elif choice == "debug":
             debug = radiolist(
                 "Debug Mode:",
@@ -66,10 +68,36 @@ def satellite_menu(last_choice: Optional[str]) -> Optional[str]:
         [
             ("name", "Satellite Name"),
             ("type", "Satellite Type"),
-            ("stop", "Stop Service"),
-            ("start", "Start Service"),
+            ("feedback", "Feedback"),
+            ("restart", "Restart Services"),
+            ("stop", "Stop Services"),
+            ("start", "Start Services"),
             ("debug", "Set Debug Mode"),
         ],
         selected_item=last_choice,
         menu_args=["--ok-button", "Select", "--cancel-button", "Back"],
     )
+
+
+def configure_feedback(settings: Settings) -> None:
+    choice: Optional[str] = None
+    while True:
+        choice = menu("Main > Satellite > Feedback", [("respeaker", "ReSpeaker")])
+        if choice == "respeaker":
+            event_service = radiolist(
+                "Event Service:",
+                [
+                    ("2mic", "2mic LEDs"),
+                    ("4mic", "4mic LEDs"),
+                ],
+            )
+
+            if event_service is not None:
+                settings.satellite.event_service_command = [
+                    str(PROGRAM_DIR / "script" / "run_{event_service}"),
+                    "--uri",
+                    "tcp://127.0.0.1:10500",
+                ]
+                settings.save()
+        else:
+            break

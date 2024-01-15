@@ -150,6 +150,8 @@ class EventSettings(ServiceSettings):
     tts_start: Optional[List[str]] = None
     tts_stop: Optional[List[str]] = None
     error: Optional[List[str]] = None
+    connected: Optional[List[str]] = None
+    disconnected: Optional[List[str]] = None
 
 
 @dataclass(frozen=True)
