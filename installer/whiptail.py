@@ -1,13 +1,13 @@
 """Python interface to whiptail command."""
-import subprocess
-import time
 import logging
 import shlex
-from concurrent.futures import ThreadPoolExecutor
+import subprocess
+import time
 from collections.abc import Sequence
-from typing import Any, Dict, List, Tuple, Optional, Union
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Dict, List, Optional, Tuple, Union
 
-from .const import TITLE, WIDTH, HEIGHT, LIST_HEIGHT
+from .const import HEIGHT, LIST_HEIGHT, TITLE, WIDTH
 
 ItemType = Union[str, Tuple[Any, str]]
 
@@ -66,7 +66,9 @@ def menu(
 
 
 def inputbox(text: str, init: Optional[Any] = None) -> Optional[str]:
-    return whiptail("--inputbox", text, HEIGHT, WIDTH, str(init) or "")
+    return whiptail(
+        "--inputbox", text, HEIGHT, WIDTH, str(init) if init is not None else ""
+    )
 
 
 def passwordbox(text: str) -> Optional[str]:
@@ -184,7 +186,9 @@ def gauge(text: str, seconds: int, parts: int = 20) -> None:
 
 
 def error(reason: str) -> None:
-    msgbox(f"An error occurred while {reason}.\n" "See local/installer.log for details.")
+    msgbox(
+        f"An error occurred while {reason}.\n" "See local/installer.log for details."
+    )
 
 
 # -----------------------------------------------------------------------------

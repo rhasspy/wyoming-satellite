@@ -1,13 +1,13 @@
 """Microphone settings."""
 import array
+import logging
 import math
 import subprocess
-import logging
-from concurrent.futures import ThreadPoolExecutor, Future
-from typing import Dict, Optional, List
+from concurrent.futures import Future, ThreadPoolExecutor
+from typing import Dict, List, Optional
 
-from .const import Settings, RECORD_SECONDS, RECORD_RMS_MIN
-from .whiptail import gauge, msgbox, radiolist, menu, inputbox
+from .const import RECORD_RMS_MIN, RECORD_SECONDS, Settings
+from .whiptail import gauge, inputbox, menu, msgbox, radiolist
 
 _LOGGER = logging.getLogger()
 
@@ -40,29 +40,25 @@ def configure_microphone(settings: Settings) -> None:
 
             if best_device is not None:
                 msgbox(f"Successfully detected microphone: {best_device}")
-                settings.microphone_device = best_device
+                settings.mic.device = best_device
                 settings.save()
             else:
                 msgbox("Audio was not detected from any microphone")
         elif choice == "list":
             # arecord -L
             microphone_device = radiolist(
-                "Select ALSA Device:",
-                get_microphone_devices(),
-                settings.microphone_device,
+                "Select ALSA Device:", get_microphone_devices(), settings.mic.device
             )
             if microphone_device:
-                settings.microphone_device = microphone_device
+                settings.mic.device = microphone_device
                 settings.save()
         elif choice == "manual":
-            microphone_device = inputbox(
-                "Enter ALSA Device:", settings.microphone_device
-            )
+            microphone_device = inputbox("Enter ALSA Device:", settings.mic.device)
             if microphone_device:
-                settings.microphone_device = microphone_device
+                settings.mic.device = microphone_device
                 settings.save()
-        elif choice == "enhancements":
-            configure_audio_enhancements(settings)
+        elif choice == "settings":
+            configure_audio_settings(settings)
         else:
             break
 
@@ -74,7 +70,7 @@ def microphone_menu(last_choice: Optional[str]) -> Optional[str]:
             ("detect", "Autodetect"),
             ("list", "Select From List"),
             ("manual", "Enter Manually"),
-            ("enhancements", "Audio Enhancements"),
+            ("settings", "Audio Settings"),
         ],
         selected_item=last_choice,
         menu_args=["--ok-button", "Select", "--cancel-button", "Back"],
@@ -86,7 +82,9 @@ def get_microphone_devices() -> List[str]:
     lines = subprocess.check_output(["arecord", "-L"]).decode("utf-8").splitlines()
     for line in lines:
         line = line.strip()
-        if line.startswith("plughw:"):
+
+        # default = PulseAudio
+        if (line == "default") or line.startswith("plughw:"):
             devices.append(line)
 
     return devices
@@ -126,61 +124,65 @@ def _record_proc(device: str) -> float:
     return 0
 
 
-def configure_audio_enhancements(settings: Settings) -> None:
+def configure_audio_settings(settings: Settings) -> None:
     choice: Optional[str] = None
     while True:
-        choice = audio_enhancements_menu(choice)
+        choice = audio_settings_menu(choice)
 
         if choice == "noise":
-            result = radiolist(
+            noise_suppression = radiolist(
                 "Noise Suppression Level",
                 [(0, "Off"), (1, "Low"), (2, "Medium"), (3, "High"), (4, "Maximum")],
-                settings.noise_suppression_level,
+                settings.mic.noise_suppression,
             )
-            if result is not None:
-                settings.noise_suppression_level = result
+            if noise_suppression is not None:
+                settings.mic.noise_suppression = noise_suppression
                 settings.save()
         elif choice == "gain":
             while True:
-                result = inputbox("Auto Gain (0-31 dbFS)", settings.auto_gain)
-                if result is not None:
-                    try:
-                        auto_gain = int(result)
-                    except ValueError:
-                        msgbox("Invalid value")
-                        continue
+                auto_gain = inputbox("Auto Gain (0-31 dbFS)", settings.mic.auto_gain)
+                if auto_gain is None:
+                    break
 
-                    if 0 <= auto_gain <= 31:
-                        settings.auto_gain = auto_gain
-                        settings.save()
-                        break
+                try:
+                    auto_gain_int = int(auto_gain)
+                except ValueError:
+                    msgbox("Invalid value")
+                    continue
 
-                    msgbox("Must be 0-31")
+                if 0 <= auto_gain_int <= 31:
+                    settings.mic.auto_gain = auto_gain_int
+                    settings.save()
+                    break
+
+                msgbox("Must be 0-31")
         elif choice == "multiplier":
             while True:
-                result = inputbox(
-                    "Volume Multipler (1 = default)", settings.mic_volume_multiplier
+                volume_multiplier = inputbox(
+                    "Volume Multipler (1 = default)", settings.mic.volume_multiplier
                 )
-                if result is not None:
-                    try:
-                        volume_multiplier = float(result)
-                    except ValueError:
-                        msgbox("Invalid value")
-                        continue
+                if volume_multiplier is None:
+                    break
 
-                    if volume_multiplier > 0:
-                        settings.mic_volume_multiplier = volume_multiplier
-                        settings.save()
-                        break
+                try:
+                    volume_multiplier_float = float(volume_multiplier)
+                except ValueError:
+                    msgbox("Invalid value")
+                    continue
 
-                    msgbox("Must be > 0")
+                if volume_multiplier_float > 0:
+                    settings.mic.volume_multiplier = volume_multiplier_float
+                    settings.save()
+                    break
+
+                msgbox("Must be > 0")
         else:
             break
 
 
-def audio_enhancements_menu(last_choice: Optional[str]) -> Optional[str]:
+def audio_settings_menu(last_choice: Optional[str]) -> Optional[str]:
     return menu(
-        "Main > Microphone > Audio Enhancements",
+        "Main > Microphone > Audio Settings",
         [
             ("noise", "Noise Suppression"),
             ("gain", "Auto Gain"),

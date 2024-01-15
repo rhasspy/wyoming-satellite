@@ -1,10 +1,12 @@
 """Constants and dataclasses."""
-import logging
 import json
+import logging
+from dataclasses import dataclass, field
 from enum import Enum
-from dataclasses import dataclass, fields, asdict, field
-from typing import Any, Dict, Optional, List
 from pathlib import Path
+from typing import List, Optional
+
+from .dataclasses_json import DataClassJsonMixin
 
 _DIR = Path(__file__).parent
 _LOGGER = logging.getLogger()
@@ -29,6 +31,47 @@ class SatelliteType(str, Enum):
     WAKE = "wake"
 
 
+@dataclass
+class SatelliteSettings(DataClassJsonMixin):
+    name: str = "Wyoming Satellite"
+    type: SatelliteType = SatelliteType.ALWAYS_STREAMING
+    debug: bool = False
+
+
+@dataclass
+class MicrophoneSettings(DataClassJsonMixin):
+    device: Optional[str] = None
+    noise_suppression: int = 0
+    auto_gain: int = 0
+    volume_multiplier: float = 1.0
+
+
+@dataclass
+class SpeakerSettings(DataClassJsonMixin):
+    device: Optional[str] = None
+    volume_multiplier: float = 1.0
+    feedback_sounds: List[str] = field(default_factory=list)
+
+
+@dataclass
+class OpenWakeWordSettings(DataClassJsonMixin):
+    wake_word: str = "ok_nabu"
+    threshold: float = 0.5
+    trigger_level: int = 1
+
+
+@dataclass
+class Porcupine1Settings(DataClassJsonMixin):
+    wake_word: str = "porcupine"
+    sensitivity: float = 0.5
+
+
+@dataclass
+class SnowboySettings(DataClassJsonMixin):
+    wake_word: str = "snowboy"
+    sensitivity: float = 0.5
+
+
 class WakeWordSystem(str, Enum):
     OPENWAKEWORD = "openWakeWord"
     PORCUPINE1 = "porcupine1"
@@ -36,49 +79,34 @@ class WakeWordSystem(str, Enum):
 
 
 @dataclass
-class Settings:
-    microphone_device: Optional[str] = None
-    noise_suppression_level: int = 0
-    auto_gain: int = 0
-    mic_volume_multiplier: float = 1.0
+class WakeWordSettings(DataClassJsonMixin):
+    system: Optional[WakeWordSystem] = None
+    openwakeword: OpenWakeWordSettings = field(default_factory=OpenWakeWordSettings)
+    porcupine1: Porcupine1Settings = field(default_factory=Porcupine1Settings)
+    snowboy: SnowboySettings = field(default_factory=SnowboySettings)
 
-    sound_device: Optional[str] = None
-    feedback_sounds: List[str] = field(default_factory=list)
 
-    wake_word_system: Optional[WakeWordSystem] = None
-    wake_word: Dict[WakeWordSystem, str] = field(
-        default_factory=lambda: {
-            WakeWordSystem.OPENWAKEWORD: "ok_nabu",
-            WakeWordSystem.PORCUPINE1: "porcupine",
-            WakeWordSystem.SNOWBOY: "snowboy",
-        }
-    )
-
-    satellite_name: str = "Wyoming Satellite"
-    satellite_type: SatelliteType = SatelliteType.ALWAYS_STREAMING
-
-    debug_enabled: bool = False
+@dataclass
+class Settings(DataClassJsonMixin):
+    satellite: SatelliteSettings = field(default_factory=SatelliteSettings)
+    mic: MicrophoneSettings = field(default_factory=MicrophoneSettings)
+    snd: SpeakerSettings = field(default_factory=SpeakerSettings)
+    wake: WakeWordSettings = field(default_factory=WakeWordSettings)
 
     @staticmethod
     def load() -> "Settings":
-        kwargs: Dict[str, Any] = {}
-
         if SETTINGS_PATH.exists():
             _LOGGER.debug("Loading settings from %s", SETTINGS_PATH)
             with open(SETTINGS_PATH, "r", encoding="utf-8") as settings_file:
                 settings_dict = json.load(settings_file)
+                return Settings.from_dict(settings_dict)
 
-            for settings_field in fields(Settings):
-                value = settings_dict.get(settings_field.name)
-                if value is not None:
-                    kwargs[settings_field.name] = value
-
-        return Settings(**kwargs)
+        return Settings()
 
     def save(self) -> None:
         _LOGGER.debug("Saving settings to %s", SETTINGS_PATH)
 
-        settings_dict = asdict(self)
+        settings_dict = self.to_dict()
         SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
 
         with open(SETTINGS_PATH, "w", encoding="utf-8") as settings_file:

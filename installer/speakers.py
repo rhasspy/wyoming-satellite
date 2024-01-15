@@ -1,10 +1,10 @@
 """Speaker settings."""
-import subprocess
 import logging
-from typing import Optional, List
+import subprocess
+from typing import List, Optional
 
-from .const import Settings, PROGRAM_DIR
-from .whiptail import radiolist, inputbox, msgbox, checklist, menu
+from .const import PROGRAM_DIR, Settings
+from .whiptail import checklist, inputbox, menu, msgbox, radiolist
 
 _LOGGER = logging.getLogger()
 
@@ -14,38 +14,44 @@ def configure_speakers(settings: Settings) -> None:
     while True:
         choice = speakers_menu(choice)
 
-        if choice == "test":
+        if choice == "play":
+            if settings.snd.device is None:
+                msgbox("No speaker device set")
+                continue
+
+            test_sound_device(settings.snd.device)
+        elif choice == "test":
             sound_device = test_speakers()
             if sound_device is not None:
-                settings.sound_device = sound_device
+                settings.snd.device = sound_device
                 settings.save()
         elif choice == "list":
             sound_device = radiolist(
                 "Select ALSA Device:",
                 get_sound_devices(),
-                settings.sound_device,
+                settings.snd.device,
             )
             if sound_device:
-                settings.sound_device = sound_device
+                settings.snd.device = sound_device
                 settings.save()
         elif choice == "manual":
-            sound_device = inputbox("Enter ALSA Device:", settings.sound_device)
+            sound_device = inputbox("Enter ALSA Device:", settings.snd.device)
             if sound_device:
-                settings.sound_device = sound_device
+                settings.snd.device = sound_device
                 settings.save()
         elif choice == "disable":
-            settings.sound_device = None
+            settings.snd.device = None
             settings.save()
             msgbox("Sound disabled")
         elif choice == "feedback":
             feedback_sounds = checklist(
                 "Enabled Sounds:",
                 [("awake", "On wake-up"), ("done", "After voice command")],
-                settings.feedback_sounds,
+                settings.snd.feedback_sounds,
             )
 
             if feedback_sounds is not None:
-                settings.feedback_sounds = feedback_sounds
+                settings.snd.feedback_sounds = feedback_sounds
                 settings.save()
         else:
             break
@@ -55,7 +61,8 @@ def speakers_menu(last_choice: Optional[str]) -> Optional[str]:
     return menu(
         "Main > Speakers",
         [
-            ("test", "Test Speakers"),
+            ("play", "Play Sound"),
+            ("test", "Test All Speakers"),
             ("list", "Select From List"),
             ("manual", "Enter Manually"),
             ("disable", "Disable Sound"),
@@ -71,7 +78,9 @@ def get_sound_devices() -> List[str]:
     lines = subprocess.check_output(["aplay", "-L"]).decode("utf-8").splitlines()
     for line in lines:
         line = line.strip()
-        if line.startswith("plughw:"):
+
+        # default = PulseAudio
+        if (line == "default") or line.startswith("plughw:"):
             devices.append(line)
 
     return devices

@@ -2,8 +2,8 @@
 import sys
 from typing import Optional
 
-from .const import Settings, PROGRAM_DIR
-from .whiptail import msgbox, run_with_gauge, menu, yesno, passwordbox, error
+from .const import PROGRAM_DIR, Settings
+from .whiptail import error, menu, msgbox, passwordbox, run_with_gauge, yesno
 
 
 def install_drivers(settings: Settings) -> None:
