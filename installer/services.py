@@ -17,7 +17,7 @@ from .whiptail import error, msgbox, run_with_gauge
 
 def stop_services(password: str) -> None:
     stop_commands = []
-    for service in ("satellite", "openwakeword", "porcupine1", "snowboy"):
+    for service in ("satellite", "wakeword", "event"):
         service_filename = f"wyoming-{service}.service"
         service_path = Path("/etc/systemd/system") / service_filename
         if not service_path.exists():
@@ -83,10 +83,8 @@ def generate_services(settings: Settings) -> None:
         # Local wake word detection
         assert settings.wake.system is not None, "Wake word system not set"
 
-        wake_word_service = (
-            "wyoming-" + WakeWordSystem(settings.wake.system).value.lower()
-        )
-        wake_word_dir = LOCAL_DIR / wake_word_service
+        wake_word_service = "wyoming-wakeword"
+        wake_word_dir = LOCAL_DIR / WakeWordSystem(settings.wake.system).value.lower()
         wake_word_command = [
             str(wake_word_dir / "script" / "run"),
             "--uri",
@@ -165,7 +163,7 @@ def generate_services(settings: Settings) -> None:
             SERVICES_DIR / f"{event_service}.service", "w", encoding="utf-8"
         ) as service_file:
             print("[Unit]", file=service_file)
-            print(f"Description=Event service", file=service_file)
+            print("Description=Event service", file=service_file)
             print("", file=service_file)
             print("[Service]", file=service_file)
             print("Type=simple", file=service_file)

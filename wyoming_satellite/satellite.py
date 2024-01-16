@@ -159,7 +159,7 @@ class SatelliteBase:
         try:
             await async_write_event(event, self._writer)
         except Exception as err:
-            self.clear_server()
+            await self.clear_server()
 
             if isinstance(err, ConnectionResetError):
                 _LOGGER.warning("Server disconnected unexpectedly")
@@ -558,7 +558,7 @@ class SatelliteBase:
 
         try:
             if mute_microphone:
-                with wave.open(wav_path, "rb") as wav_file:
+                with wave.open(str(wav_path), "rb") as wav_file:
                     seconds_to_mute = wav_file.getnframes() / wav_file.getframerate()
 
                 seconds_to_mute += self.settings.mic.seconds_to_mute_after_awake_wav

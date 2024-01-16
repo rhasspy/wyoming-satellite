@@ -53,6 +53,26 @@ def configure_speakers(settings: Settings) -> None:
             if feedback_sounds is not None:
                 settings.snd.feedback_sounds = feedback_sounds
                 settings.save()
+        elif choice == "multiplier":
+            while True:
+                volume_multiplier = inputbox(
+                    "Volume Multipler (1 = default)", settings.snd.volume_multiplier
+                )
+                if volume_multiplier is None:
+                    break
+
+                try:
+                    volume_multiplier_float = float(volume_multiplier)
+                except ValueError:
+                    msgbox("Invalid value")
+                    continue
+
+                if volume_multiplier_float > 0:
+                    settings.snd.volume_multiplier = volume_multiplier_float
+                    settings.save()
+                    break
+
+                msgbox("Must be > 0")
         else:
             break
 
@@ -66,6 +86,7 @@ def speakers_menu(last_choice: Optional[str]) -> Optional[str]:
             ("list", "Select From List"),
             ("manual", "Enter Manually"),
             ("disable", "Disable Sound"),
+            ("multipler", "Volume Multipler"),
             ("feedback", "Toggle Feedback Sounds"),
         ],
         selected_item=last_choice,

@@ -35,7 +35,12 @@ def configure_microphone(settings: Settings) -> None:
                         _LOGGER.warning("Failed to record from microphone %s", device)
                         continue
 
-                    _LOGGER.debug("Microphone %s got RMS %s (min: %s)", device, device_rms, RECORD_RMS_MIN)
+                    _LOGGER.debug(
+                        "Microphone %s got RMS %s (min: %s)",
+                        device,
+                        device_rms,
+                        RECORD_RMS_MIN,
+                    )
                     if device_rms < RECORD_RMS_MIN:
                         continue
 
@@ -48,8 +53,10 @@ def configure_microphone(settings: Settings) -> None:
                 settings.mic.device = best_device
                 settings.save()
             else:
-                msgbox("Audio was not detected from any microphone.\n"
-                       "If a satellite is currently running, you may need to stop it.")
+                msgbox(
+                    "Audio was not detected from any microphone.\n"
+                    "If a satellite is currently running, you may need to stop it."
+                )
         elif choice == "list":
             # arecord -L
             microphone_device = radiolist(
@@ -120,7 +127,9 @@ def _record_proc(device: str) -> Optional[float]:
         )
         audio, stderr = proc.communicate()
         if proc.returncode != 0:
-            _LOGGER.error("Error recording from device %s: %s", device, stderr.decode("utf-8"))
+            _LOGGER.error(
+                "Error recording from device %s: %s", device, stderr.decode("utf-8")
+            )
             return None
 
         # 16-bit mono
