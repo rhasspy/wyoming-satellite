@@ -16,7 +16,7 @@ LOCAL_DIR = PROGRAM_DIR / "local"
 SETTINGS_PATH = LOCAL_DIR / "settings.json"
 SERVICES_DIR = LOCAL_DIR / "services"
 
-RECORD_SECONDS = 8
+RECORD_SECONDS = 5
 RECORD_RMS_MIN = 30
 
 TITLE = "Wyoming Satellite"

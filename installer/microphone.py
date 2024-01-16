@@ -31,6 +31,11 @@ def configure_microphone(settings: Settings) -> None:
                 gauge("Speak loudly into the microphone.", RECORD_SECONDS)
                 for device, future in futures.items():
                     device_rms = future.result()
+                    if device_rms is None:
+                        _LOGGER.warning("Failed to record from microphone %s", device)
+                        continue
+
+                    _LOGGER.debug("Microphone %s got RMS %s (min: %s)", device, device_rms, RECORD_RMS_MIN)
                     if device_rms < RECORD_RMS_MIN:
                         continue
 
@@ -43,7 +48,8 @@ def configure_microphone(settings: Settings) -> None:
                 settings.mic.device = best_device
                 settings.save()
             else:
-                msgbox("Audio was not detected from any microphone")
+                msgbox("Audio was not detected from any microphone.\n"
+                       "If a satellite is currently running, you may need to stop it.")
         elif choice == "list":
             # arecord -L
             microphone_device = radiolist(
@@ -90,9 +96,9 @@ def get_microphone_devices() -> List[str]:
     return devices
 
 
-def _record_proc(device: str) -> float:
+def _record_proc(device: str) -> Optional[float]:
     try:
-        audio = subprocess.check_output(
+        proc = subprocess.Popen(
             [
                 "arecord",
                 "-q",
@@ -109,8 +115,13 @@ def _record_proc(device: str) -> float:
                 "-d",
                 str(RECORD_SECONDS),
             ],
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
+        audio, stderr = proc.communicate()
+        if proc.returncode != 0:
+            _LOGGER.error("Error recording from device %s: %s", device, stderr.decode("utf-8"))
+            return None
 
         # 16-bit mono
         audio_array = array.array("h", audio)
@@ -120,6 +131,7 @@ def _record_proc(device: str) -> float:
         return rms
     except Exception:
         _LOGGER.exception("Error recording from device: %s", device)
+        return None
 
     return 0
 
