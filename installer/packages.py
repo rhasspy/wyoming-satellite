@@ -1,14 +1,21 @@
 """Install system packages."""
+import logging
 import subprocess
 
 from .const import PROGRAM_DIR
 from .whiptail import run_with_gauge
 
+_LOGGER = logging.getLogger()
+
 
 def packages_installed(*packages) -> bool:
     for package in packages:
         try:
-            subprocess.check_call(["dpkg", "--status", str(package)])
+            subprocess.check_call(
+                ["dpkg", "--status", str(package)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
         except Exception:
             return False
 
@@ -26,10 +33,16 @@ def install_packages_nogui(*packages, update: bool = True) -> bool:
         ["sudo", "apt-get", "install", "--yes"] + [str(p) for p in packages]
     )
 
-    for command in commands:
-        subprocess.check_call(
-            command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
+    try:
+        for command in commands:
+            subprocess.check_call(
+                command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+    except Exception:
+        _LOGGER.exception("Unexpected error installing packages: %s", packages)
+        return False
+
+    return True
 
 
 def install_packages(
