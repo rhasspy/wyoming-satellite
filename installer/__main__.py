@@ -5,6 +5,12 @@ from typing import List, Optional
 from .const import LOCAL_DIR, PROGRAM_DIR, SatelliteType, Settings
 from .drivers import install_drivers
 from .microphone import configure_microphone
+from .packages import (
+    can_import,
+    install_packages,
+    install_packages_nogui,
+    packages_installed,
+)
 from .satellite import configure_satellite
 from .services import generate_services, install_services, stop_services
 from .speakers import configure_speakers
@@ -21,6 +27,9 @@ def main() -> None:
     )
 
     settings = Settings.load()
+
+    if not packages_installed("whiptail"):
+        install_packages_nogui("whiptail")
 
     choice: Optional[str] = None
     while True:
@@ -85,6 +94,19 @@ def apply_settings(settings: Settings) -> None:
         msgbox("Please set wake word system")
         return
 
+    password: Optional[str] = None
+    if not packages_installed("python3-pip", "python3-venv"):
+        password = passwordbox("sudo password:")
+        if not password:
+            return
+
+        success = install_packages(
+            "Installing Python packages...", password, "python3-pip", "python3-venv"
+        )
+        if not success:
+            error("installing pip/venv for Python")
+            return
+
     # Satellite venv
     venv_dir = PROGRAM_DIR / ".venv"
     if not venv_dir.exists():
@@ -96,7 +118,9 @@ def apply_settings(settings: Settings) -> None:
             return
 
     # silero (vad)
-    if settings.satellite.type == SatelliteType.VAD:
+    if (settings.satellite.type == SatelliteType.VAD) and (
+        not can_import("pysilero_vad")
+    ):
         result = run_with_gauge(
             "Installing vad...",
             [pip_install("-r", str(PROGRAM_DIR / "requirements_vad.txt"))],
@@ -106,7 +130,9 @@ def apply_settings(settings: Settings) -> None:
             return
 
     # webrtc (audio enhancements)
-    if (settings.mic.noise_suppression > 0) or (settings.mic.auto_gain > 0):
+    if ((settings.mic.noise_suppression > 0) or (settings.mic.auto_gain > 0)) and (
+        not can_import("webrtc_noise_gain")
+    ):
         result = run_with_gauge(
             "Installing audio enhancements...",
             [
@@ -119,10 +145,13 @@ def apply_settings(settings: Settings) -> None:
             error("installing audio enhancements")
             return
 
-    if settings.satellite.event_service_command and (
-        ("2mic" in settings.satellite.event_service_command)
-        or ("4mic" in settings.satellite.event_service_command)
-    ):
+    if (
+        settings.satellite.event_service_command
+        and (
+            ("2mic" in settings.satellite.event_service_command)
+            or ("4mic" in settings.satellite.event_service_command)
+        )
+    ) and (not can_import("gpiozero", "spidev")):
         result = run_with_gauge(
             "Installing event requirements...",
             [pip_install("-r", str(PROGRAM_DIR / "requirements_respeaker.txt"))],
@@ -133,9 +162,10 @@ def apply_settings(settings: Settings) -> None:
 
     generate_services(settings)
 
-    password = passwordbox("sudo password:")
-    if not password:
-        return
+    if password is None:
+        password = passwordbox("sudo password:")
+        if not password:
+            return
 
     stop_services(password)
     install_services(settings, password)

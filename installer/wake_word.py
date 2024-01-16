@@ -6,7 +6,17 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from .const import LOCAL_DIR, SatelliteType, Settings, WakeWordSystem
-from .whiptail import error, inputbox, menu, msgbox, radiolist, run_with_gauge, yesno
+from .packages import install_packages, packages_installed
+from .whiptail import (
+    error,
+    inputbox,
+    menu,
+    msgbox,
+    passwordbox,
+    radiolist,
+    run_with_gauge,
+    yesno,
+)
 
 
 def configure_wake_word(settings: Settings) -> None:
@@ -92,8 +102,7 @@ def install_wake_word(settings: Settings, wake_word_system: WakeWordSystem) -> N
                 error("installing openWakeWord")
                 return
 
-            msgbox("openWakeWord installed successfully")
-
+        msgbox("openWakeWord installed successfully")
         settings.wake.system = wake_word_system
         settings.save()
         return
@@ -125,9 +134,9 @@ def install_wake_word(settings: Settings, wake_word_system: WakeWordSystem) -> N
                     pass
 
                 error("installing porcupine1")
-            else:
-                msgbox("porcupine1 installed successfully")
+                return
 
+        msgbox("porcupine1 installed successfully")
         settings.wake.system = wake_word_system
         settings.save()
         return
@@ -137,6 +146,19 @@ def install_wake_word(settings: Settings, wake_word_system: WakeWordSystem) -> N
         if not snowboy_dir.exists():
             if not yesno("Install snowboy?"):
                 return
+
+            snowboy_packages = ["python3-dev", "swig", "libatlas-base-dev"]
+            if not packages_installed(*snowboy_packages):
+                password = passwordbox("sudo password:")
+                if not password:
+                    return
+
+                success = install_packages(
+                    "Installing system packages...", password, *snowboy_packages
+                )
+                if not success:
+                    error("installing " + ", ".join(snowboy_packages))
+                    return
 
             success = run_with_gauge(
                 "Installing snowboy",
@@ -159,9 +181,9 @@ def install_wake_word(settings: Settings, wake_word_system: WakeWordSystem) -> N
                     pass
 
                 error("installing snowboy")
-            else:
-                msgbox("snowboy installed successfully")
+                return
 
+        msgbox("snowboy installed successfully")
         settings.wake.system = wake_word_system
         settings.save()
         return
