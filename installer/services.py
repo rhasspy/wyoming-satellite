@@ -250,7 +250,7 @@ def install_services(settings: Settings, password: str):
         install_commands.append(["sudo", "-S", "systemctl", "enable", service_filename])
 
     install_commands.append(
-        ["sudo", "-S", "systemctl", "start", "wyoming-satellite.service"]
+        ["sudo", "-S", "systemctl", "enable", "--now", "wyoming-satellite.service"]
     )
 
     success = run_with_gauge(
