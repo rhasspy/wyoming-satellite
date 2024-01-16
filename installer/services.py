@@ -223,7 +223,7 @@ def install_services(settings: Settings, password: str):
     installed_services = ["satellite"]
     if settings.satellite.type == SatelliteType.WAKE:
         assert settings.wake.system is not None, "No wake word system"
-        installed_services.append(WakeWordSystem(settings.wake.system).value.lower())
+        installed_services.append("wakeword")
 
     if settings.satellite.event_service_command:
         installed_services.append("event")
