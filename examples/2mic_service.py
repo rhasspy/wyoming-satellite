@@ -14,10 +14,10 @@ from wyoming.asr import Transcript
 from wyoming.event import Event
 from wyoming.satellite import (
     RunSatellite,
-    StreamingStarted,
-    StreamingStopped,
     SatelliteConnected,
     SatelliteDisconnected,
+    StreamingStarted,
+    StreamingStopped,
 )
 from wyoming.server import AsyncEventHandler, AsyncServer
 from wyoming.vad import VoiceStarted
@@ -115,7 +115,7 @@ class LEDsEventHandler(AsyncEventHandler):
             self.color(_BLACK)
         elif SatelliteConnected.is_type(event.type):
             # Flash
-            for _ in range(5):
+            for _ in range(3):
                 self.color(_GREEN)
                 await asyncio.sleep(0.3)
                 self.color(_BLACK)

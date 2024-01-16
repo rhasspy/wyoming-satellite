@@ -3,9 +3,10 @@ import asyncio
 import logging
 import math
 import time
+import wave
 from enum import Enum, auto
 from pathlib import Path
-from typing import Callable, Dict, Optional, Set, Union, Final
+from typing import Callable, Dict, Final, Optional, Set, Union
 
 from pyring_buffer import RingBuffer
 from wyoming.asr import Transcript
@@ -14,19 +15,19 @@ from wyoming.client import AsyncClient
 from wyoming.error import Error
 from wyoming.event import Event, async_write_event
 from wyoming.mic import MicProcessAsyncClient
+from wyoming.ping import Ping, Pong
 from wyoming.pipeline import PipelineStage, RunPipeline
 from wyoming.satellite import (
     RunSatellite,
-    StreamingStarted,
-    StreamingStopped,
     SatelliteConnected,
     SatelliteDisconnected,
+    StreamingStarted,
+    StreamingStopped,
 )
 from wyoming.snd import SndProcessAsyncClient
 from wyoming.tts import Synthesize
 from wyoming.vad import VoiceStarted, VoiceStopped
 from wyoming.wake import Detect, Detection, WakeProcessAsyncClient
-from wyoming.ping import Ping, Pong
 
 from .settings import SatelliteSettings
 from .utils import DebugAudioWriter, multiply_volume, run_event_command, wav_to_events
@@ -72,6 +73,9 @@ class SatelliteBase:
 
         self._pong_received_event = asyncio.Event()
         self._ping_server_task = asyncio.create_task(self._ping_server(), name="ping")
+
+        self.microphone_muted = False
+        self._unmute_microphone_task: Optional[asyncio.Task] = None
 
         # Debug audio recording
         self.wake_audio_writer: Optional[DebugAudioWriter] = None
@@ -545,17 +549,41 @@ class SatelliteBase:
 
         return audio_bytes
 
-    async def _play_wav(self, wav_path: Optional[Union[str, Path]]) -> None:
+    async def _play_wav(
+        self, wav_path: Optional[Union[str, Path]], mute_microphone: bool = False
+    ) -> None:
         """Send WAV as events to sound service."""
         if (not wav_path) or (not self.settings.snd.enabled):
             return
 
-        for event in wav_to_events(
-            wav_path,
-            samples_per_chunk=self.settings.snd.samples_per_chunk,
-            volume_multiplier=self.settings.snd.volume_multiplier,
-        ):
-            await self.event_to_snd(event)
+        try:
+            if mute_microphone:
+                with wave.open(wav_path, "rb") as wav_file:
+                    seconds_to_mute = wav_file.getnframes() / wav_file.getframerate()
+
+                seconds_to_mute += self.settings.mic.seconds_to_mute_after_awake_wav
+                _LOGGER.debug("Muting microphone for %s second(s)", seconds_to_mute)
+                self.microphone_muted = True
+                self._unmute_microphone_task = asyncio.create_task(
+                    self._unmute_microphone_after(seconds_to_mute)
+                )
+
+            for event in wav_to_events(
+                wav_path,
+                samples_per_chunk=self.settings.snd.samples_per_chunk,
+                volume_multiplier=self.settings.snd.volume_multiplier,
+            ):
+                await self.event_to_snd(event)
+        except Exception:
+            # Unmute in case of an error
+            self.microphone_muted = False
+
+            raise
+
+    async def _unmute_microphone_after(self, seconds: float) -> None:
+        await asyncio.sleep(seconds)
+        self.microphone_muted = False
+        _LOGGER.debug("Unmuted microphone")
 
     # -------------------------------------------------------------------------
     # Wake
@@ -719,7 +747,10 @@ class SatelliteBase:
     async def trigger_detection(self, detection: Detection) -> None:
         """Called when wake word is detected."""
         await run_event_command(self.settings.event.detection, detection.name)
-        await self._play_wav(self.settings.snd.awake_wav)
+        await self._play_wav(
+            self.settings.snd.awake_wav,
+            mute_microphone=self.settings.mic.mute_during_awake_wav,
+        )
 
     async def trigger_transcript(self, transcript: Transcript) -> None:
         """Called when speech-to-text text is received."""
@@ -827,22 +858,23 @@ class AlwaysStreamingSatellite(SatelliteBase):
             # Start debug recording
             if self.stt_audio_writer is not None:
                 self.stt_audio_writer.start()
-        elif Transcript.is_type(event.type):
+        elif Transcript.is_type(event.type) or Error.is_type(event.type):
             # Stop debug recording
             if self.stt_audio_writer is not None:
                 self.stt_audio_writer.stop()
 
-            # We're always streaming
-            _LOGGER.info("Streaming audio")
+            if Transcript.is_type(event.type):
+                # We're always streaming
+                _LOGGER.info("Streaming audio")
 
-            # Re-trigger streaming start even though we technically don't stop
-            # so the event service can reset LEDs, etc.
-            await self.trigger_streaming_start()
+                # Re-trigger streaming start even though we technically don't stop
+                # so the event service can reset LEDs, etc.
+                await self.trigger_streaming_start()
 
     async def event_from_mic(
         self, event: Event, audio_bytes: Optional[bytes] = None
     ) -> None:
-        if not self.is_streaming:
+        if (not self.is_streaming) or self.microphone_muted:
             return
 
         if AudioChunk.is_type(event.type):
@@ -898,7 +930,9 @@ class VadStreamingSatellite(SatelliteBase):
             # Start debug recording
             if self.stt_audio_writer is not None:
                 self.stt_audio_writer.start()
-        elif Transcript.is_type(event.type):
+        elif Transcript.is_type(event.type) or Error.is_type(event.type):
+            self.is_streaming = False
+
             # Stop debug recording
             if self.stt_audio_writer is not None:
                 self.stt_audio_writer.stop()
@@ -906,7 +940,7 @@ class VadStreamingSatellite(SatelliteBase):
     async def event_from_mic(
         self, event: Event, audio_bytes: Optional[bytes] = None
     ) -> None:
-        if not AudioChunk.is_type(event.type):
+        if (not AudioChunk.is_type(event.type)) or self.microphone_muted:
             return
 
         # Only unpack chunk once
@@ -1031,11 +1065,14 @@ class WakeStreamingSatellite(SatelliteBase):
         # Only check event types once
         is_run_satellite = False
         is_transcript = False
+        is_error = False
 
         if RunSatellite.is_type(event.type):
             is_run_satellite = True
         elif Transcript.is_type(event.type):
             is_transcript = True
+        elif Error.is_type(event.type):
+            is_error = True
 
         if is_transcript:
             # Stop streaming before event_from_server is called because it will
@@ -1048,7 +1085,7 @@ class WakeStreamingSatellite(SatelliteBase):
 
         await super().event_from_server(event)
 
-        if is_run_satellite or is_transcript:
+        if is_run_satellite or is_transcript or is_error:
             # Stop streaming and go back to wake word detection
             self.is_streaming = False
             await self.trigger_streaming_stop()
@@ -1074,7 +1111,7 @@ class WakeStreamingSatellite(SatelliteBase):
     async def event_from_mic(
         self, event: Event, audio_bytes: Optional[bytes] = None
     ) -> None:
-        if not AudioChunk.is_type(event.type):
+        if (not AudioChunk.is_type(event.type)) or self.microphone_muted:
             return
 
         # Debug audio recording

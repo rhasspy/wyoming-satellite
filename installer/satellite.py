@@ -1,7 +1,7 @@
 """Satellite settings."""
 from typing import Optional
 
-from .const import SatelliteType, Settings, PROGRAM_DIR
+from .const import PROGRAM_DIR, SatelliteType, Settings
 from .whiptail import error, inputbox, menu, passwordbox, radiolist, run_with_gauge
 
 
