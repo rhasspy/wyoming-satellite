@@ -55,6 +55,11 @@ def generate_services(settings: Settings) -> None:
             ]
         )
 
+        if settings.snd.volume_multiplier != 1.0:
+            satellite_command.extend(
+                ["--snd-volume-multiplier", str(settings.snd.volume_multiplier)]
+            )
+
         for sound_name in settings.snd.feedback_sounds:
             # Try local/sounds first
             sound_path = LOCAL_DIR / "sounds" / f"{sound_name}.wav"
