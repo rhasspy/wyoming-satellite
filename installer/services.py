@@ -89,7 +89,9 @@ def generate_services(settings: Settings) -> None:
         assert settings.wake.system is not None, "Wake word system not set"
 
         wake_word_service = "wyoming-wakeword"
-        wake_word_dir = LOCAL_DIR / WakeWordSystem(settings.wake.system).value.lower()
+        wake_word_dir = LOCAL_DIR / (
+            "wyoming-" + WakeWordSystem(settings.wake.system).value.lower()
+        )
         wake_word_command = [
             str(wake_word_dir / "script" / "run"),
             "--uri",
