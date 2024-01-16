@@ -180,7 +180,7 @@ def configure_audio_settings(settings: Settings) -> None:
         elif choice == "multiplier":
             while True:
                 volume_multiplier = inputbox(
-                    "Volume Multipler (1 = default)", settings.mic.volume_multiplier
+                    "Volume Multiplier (1 = default)", settings.mic.volume_multiplier
                 )
                 if volume_multiplier is None:
                     break
