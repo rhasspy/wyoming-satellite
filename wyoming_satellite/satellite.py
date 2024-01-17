@@ -71,6 +71,7 @@ class SatelliteBase:
         self._event_task: Optional[asyncio.Task] = None
         self._event_queue: "Optional[asyncio.Queue[Event]]" = None
 
+        self._ping_server_enabled: bool = False
         self._pong_received_event = asyncio.Event()
         self._ping_server_task = asyncio.create_task(self._ping_server(), name="ping")
 
@@ -170,7 +171,7 @@ class SatelliteBase:
         try:
             while self.is_running:
                 await asyncio.sleep(_PING_SEND_DELAY)
-                if self.server_id is None:
+                if (self.server_id is None) or (not self._ping_server_enabled):
                     # No server connected
                     continue
 
@@ -220,6 +221,9 @@ class SatelliteBase:
             # Respond with pong
             ping = Ping.from_event(event)
             await self.event_to_server(Pong(text=ping.text).event())
+
+            # Enable pinging
+            self._ping_server_enabled = True
         elif Pong.is_type(event.type):
             # Response from our ping
             self._pong_received_event.set()
