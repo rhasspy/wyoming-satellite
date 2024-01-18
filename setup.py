@@ -6,9 +6,9 @@ import setuptools
 from setuptools import setup
 
 this_dir = Path(__file__).parent
-version = (
-    (this_dir / "wyoming_satellite" / "VERSION").read_text(encoding="utf-8").strip()
-)
+module_dir = this_dir / "wyoming_satellite"
+version_path = module_dir / "VERSION"
+version = version_path.read_text(encoding="utf-8").strip()
 
 
 def get_requirements(req_path: Path) -> List[str]:
@@ -44,6 +44,9 @@ setup(
     author="Michael Hansen",
     author_email="mike@rhasspy.org",
     packages=setuptools.find_packages(),
+    package_data={
+        "wyoming_satellite": [str(p.relative_to(module_dir)) for p in (version_path,)]
+    },
     install_requires=install_requires,
     classifiers=[
         "Development Status :: 3 - Alpha",
