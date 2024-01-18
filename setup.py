@@ -6,6 +6,9 @@ import setuptools
 from setuptools import setup
 
 this_dir = Path(__file__).parent
+version = (
+    (this_dir / "wyoming_satellite" / "VERSION").read_text(encoding="utf-8").strip()
+)
 
 
 def get_requirements(req_path: Path) -> List[str]:

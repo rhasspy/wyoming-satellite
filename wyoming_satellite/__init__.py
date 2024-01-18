@@ -1,4 +1,6 @@
 """Voice satellite using the Wyoming protocol."""
+from pathlib import Path
+
 from .satellite import (
     AlwaysStreamingSatellite,
     SatelliteBase,
@@ -14,7 +16,11 @@ from .settings import (
     WakeSettings,
 )
 
+_DIR = Path(__file__).parent
+__version__ = (_DIR / "VERSION").read_text(encoding="utf-8").strip()
+
 __all__ = [
+    "__version__",
     "AlwaysStreamingSatellite",
     "EventSettings",
     "MicSettings",
@@ -23,6 +29,6 @@ __all__ = [
     "SndSettings",
     "VadSettings",
     "VadStreamingSatellite",
-    "WakeSettings",
     "WakeStreamingSatellite",
+    "WakeSettings",
 ]

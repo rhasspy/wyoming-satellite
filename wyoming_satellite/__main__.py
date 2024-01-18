@@ -9,6 +9,7 @@ from pathlib import Path
 from wyoming.info import Attribution, Info, Satellite
 from wyoming.server import AsyncServer, AsyncTcpServer
 
+from . import __version__
 from .event_handler import SatelliteEventHandler
 from .satellite import (
     AlwaysStreamingSatellite,
@@ -280,6 +281,7 @@ async def main() -> None:
             description=args.name,
             attribution=Attribution(name="", url=""),
             installed=True,
+            version=__version__,
         )
     )
 
