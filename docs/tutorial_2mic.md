@@ -302,7 +302,7 @@ cd wyoming-satellite/examples
 python3 -m venv --system-site-packages .venv
 .venv/bin/pip3 install --upgrade pip
 .venv/bin/pip3 install --upgrade wheel setuptools
-.venv/bin/pip3 install 'wyoming==1.4.1'
+.venv/bin/pip3 install 'wyoming==1.5.1'
 ```
 
 The `--system-site-packages` argument is used to access the pre-installed `gpiozero` and `spidev` Python packages. If these are **not already installed** in your system, run:
