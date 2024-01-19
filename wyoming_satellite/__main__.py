@@ -235,6 +235,9 @@ async def main() -> None:
         "--debug-recording-dir", help="Directory to store audio for debugging"
     )
     parser.add_argument("--debug", action="store_true", help="Log DEBUG messages")
+    parser.add_argument(
+        "--log-format", default=logging.BASIC_FORMAT, help="Format for log messages"
+    )
     args = parser.parse_args()
 
     # Validate args
@@ -267,7 +270,9 @@ async def main() -> None:
     if args.vad and (args.wake_uri or args.wake_command):
         _LOGGER.warning("VAD is not used with local wake word detection")
 
-    logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO)
+    logging.basicConfig(
+        level=logging.DEBUG if args.debug else logging.INFO, format=args.log_format
+    )
     _LOGGER.debug(args)
 
     if args.debug_recording_dir:
