@@ -39,12 +39,6 @@ _DIR = Path(__file__).parent
 
 async def main() -> None:
     """Main entry point."""
-
-    logging.basicConfig(
-        format='%(asctime)s %(levelname)-8s %(message)s',
-        level=logging.DEBUG,
-        datefmt='%Y-%m-%dT%H:%M:%S%z')
-
     parser = argparse.ArgumentParser()
 
     # Microphone input
@@ -243,6 +237,12 @@ async def main() -> None:
     parser.add_argument("--debug", action="store_true", help="Log DEBUG messages")
     args = parser.parse_args()
 
+    # configure log format
+    logging.basicConfig(
+        format='%(asctime)s %(levelname)-8s %(message)s',
+        level=logging.DEBUG if args.debug else logging.INFO,
+        datefmt='%Y-%m-%dT%H:%M:%S%z')
+
     # Validate args
     if (not args.mic_uri) and (not args.mic_command):
         _LOGGER.fatal("Either --mic-uri or --mic-command is required")
@@ -273,7 +273,6 @@ async def main() -> None:
     if args.vad and (args.wake_uri or args.wake_command):
         _LOGGER.warning("VAD is not used with local wake word detection")
 
-    logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO)
     _LOGGER.debug(args)
 
     if args.debug_recording_dir:
