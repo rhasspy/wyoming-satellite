@@ -239,7 +239,7 @@ async def main() -> None:
 
     # configure log format
     logging.basicConfig(
-        format='%(asctime)s %(levelname)-8s %(message)s',
+        format='%(asctime)s %(levelname)-8s %(message)s' if Path("/.dockerenv").is_file() else '%(levelname)-8s %(message)s',
         level=logging.DEBUG if args.debug else logging.INFO,
         datefmt='%Y-%m-%dT%H:%M:%S%z')
 
