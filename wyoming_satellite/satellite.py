@@ -25,7 +25,7 @@ from wyoming.satellite import (
     StreamingStarted,
     StreamingStopped,
 )
-from wyoming.snd import SndProcessAsyncClient, Played
+from wyoming.snd import SndProcessAsyncClient
 from wyoming.tts import Synthesize
 from wyoming.vad import VoiceStarted, VoiceStopped
 from wyoming.wake import Detect, Detection, WakeProcessAsyncClient
@@ -550,7 +550,6 @@ class SatelliteBase:
                     event.type
                 ):
                     await _disconnect()
-                    await self.forward_event(Played().event())
                     snd_client = None  # reconnect on next event
             except asyncio.CancelledError:
                 break
