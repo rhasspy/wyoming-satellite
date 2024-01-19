@@ -39,6 +39,12 @@ _DIR = Path(__file__).parent
 
 async def main() -> None:
     """Main entry point."""
+
+    logging.basicConfig(
+        format='%(asctime)s %(levelname)-8s %(message)s',
+        level=logging.DEBUG,
+        datefmt='%Y-%m-%dT%H:%M:%S%z')
+
     parser = argparse.ArgumentParser()
 
     # Microphone input
