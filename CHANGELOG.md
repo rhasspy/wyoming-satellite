@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1
+
+- Bump to wyoming 1.5.2 (package fix)
+
 ## 1.1.0
 
 - Bump to wyoming 1.5.1
