@@ -8,11 +8,11 @@ _PROGRAM_DIR = _DIR.parent
 _VENV_DIR = _PROGRAM_DIR / ".venv"
 _MODULE_DIR = _PROGRAM_DIR / "wyoming_satellite"
 _TESTS_DIR = _PROGRAM_DIR / "tests"
+_INSTALLER_DIR = _PROGRAM_DIR / "installer"
+_EXAMPLES_DIR = _PROGRAM_DIR / "examples"
+
+_FORMAT_DIRS = [_MODULE_DIR, _TESTS_DIR, _INSTALLER_DIR, _EXAMPLES_DIR]
 
 context = venv.EnvBuilder().ensure_directories(_VENV_DIR)
-subprocess.check_call(
-    [context.env_exe, "-m", "black", str(_MODULE_DIR), str(_TESTS_DIR)]
-)
-subprocess.check_call(
-    [context.env_exe, "-m", "isort", str(_MODULE_DIR), str(_TESTS_DIR)]
-)
+subprocess.check_call([context.env_exe, "-m", "black"] + _FORMAT_DIRS)
+subprocess.check_call([context.env_exe, "-m", "isort"] + _FORMAT_DIRS)

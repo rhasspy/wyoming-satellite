@@ -12,7 +12,13 @@ import gpiozero
 import spidev
 from wyoming.asr import Transcript
 from wyoming.event import Event
-from wyoming.satellite import RunSatellite, StreamingStarted, StreamingStopped
+from wyoming.satellite import (
+    RunSatellite,
+    SatelliteConnected,
+    SatelliteDisconnected,
+    StreamingStarted,
+    StreamingStopped,
+)
 from wyoming.server import AsyncEventHandler, AsyncServer
 from wyoming.vad import VoiceStarted
 from wyoming.wake import Detection
@@ -107,6 +113,15 @@ class LEDsEventHandler(AsyncEventHandler):
             self.color(_BLACK)
         elif RunSatellite.is_type(event.type):
             self.color(_BLACK)
+        elif SatelliteConnected.is_type(event.type):
+            # Flash
+            for _ in range(3):
+                self.color(_GREEN)
+                await asyncio.sleep(0.3)
+                self.color(_BLACK)
+                await asyncio.sleep(0.3)
+        elif SatelliteDisconnected.is_type(event.type):
+            self.color(_RED)
 
         return True
 

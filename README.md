@@ -22,6 +22,14 @@ Requires:
 
 ## Installation
 
+Install the necessary system dependencies:
+
+``` sh
+sudo apt-get install python3-venv python3-pip
+```
+
+Then run the install script:
+
 ``` sh
 script/setup
 ```
@@ -168,5 +176,7 @@ Satellites can respond to events from the server by running commands:
 * `--tts-start-command` - text-to-speech response started (no stdin)
 * `--tts-stop-command` - text-to-speech response stopped (no stdin)
 * `--error-command` - an error was sent from the server (text on stdin)
+* `--connected-command` - satellite connected to server
+* `--disconnected-command` - satellite disconnected from server
 
 For more advanced scenarios, use an event service (`--event-uri`). See `wyoming_satellite/example_event_client.py` for a basic client that just logs events.

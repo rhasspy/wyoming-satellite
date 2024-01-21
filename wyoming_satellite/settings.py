@@ -49,6 +49,12 @@ class MicSettings(ServiceSettings):
     samples_per_chunk: int = 1024
     """Samples to read at a time from mic command"""
 
+    mute_during_awake_wav: bool = True
+    """True if microphone audio should be muted while the awake WAV is playing."""
+
+    seconds_to_mute_after_awake_wav: float = 0.5
+    """Extra second(s) of microphone audio to mute after awake WAV has finished playing."""
+
     @property
     def needs_webrtc(self) -> bool:
         """True if webrtc audio enhancements are needed."""
@@ -150,6 +156,8 @@ class EventSettings(ServiceSettings):
     tts_start: Optional[List[str]] = None
     tts_stop: Optional[List[str]] = None
     error: Optional[List[str]] = None
+    connected: Optional[List[str]] = None
+    disconnected: Optional[List[str]] = None
 
 
 @dataclass(frozen=True)

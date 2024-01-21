@@ -9,6 +9,7 @@ from pathlib import Path
 from wyoming.info import Attribution, Info, Satellite
 from wyoming.server import AsyncServer, AsyncTcpServer
 
+from . import __version__
 from .event_handler import SatelliteEventHandler
 from .satellite import (
     AlwaysStreamingSatellite,
@@ -193,6 +194,14 @@ async def main() -> None:
         "--error-command",
         help="Command to run when an error occurs",
     )
+    parser.add_argument(
+        "--connected-command",
+        help="Command to run when connected to the server",
+    )
+    parser.add_argument(
+        "--disconnected-command",
+        help="Command to run when disconnected from the server",
+    )
 
     # Sounds
     parser.add_argument(
@@ -226,6 +235,9 @@ async def main() -> None:
         "--debug-recording-dir", help="Directory to store audio for debugging"
     )
     parser.add_argument("--debug", action="store_true", help="Log DEBUG messages")
+    parser.add_argument(
+        "--log-format", default=logging.BASIC_FORMAT, help="Format for log messages"
+    )
     args = parser.parse_args()
 
     # Validate args
@@ -258,7 +270,9 @@ async def main() -> None:
     if args.vad and (args.wake_uri or args.wake_command):
         _LOGGER.warning("VAD is not used with local wake word detection")
 
-    logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO)
+    logging.basicConfig(
+        level=logging.DEBUG if args.debug else logging.INFO, format=args.log_format
+    )
     _LOGGER.debug(args)
 
     if args.debug_recording_dir:
@@ -272,6 +286,7 @@ async def main() -> None:
             description=args.name,
             attribution=Attribution(name="", url=""),
             installed=True,
+            version=__version__,
         )
     )
 
@@ -326,6 +341,8 @@ async def main() -> None:
             tts_start=split_command(args.tts_start_command),
             tts_stop=split_command(args.tts_stop_command),
             error=split_command(args.error_command),
+            connected=split_command(args.connected_command),
+            disconnected=split_command(args.disconnected_command),
         ),
         debug_recording_dir=args.debug_recording_dir,
     )
@@ -368,7 +385,7 @@ async def main() -> None:
             args.zeroconf_host,
         )
 
-    satellite_task = asyncio.create_task(satellite.run())
+    satellite_task = asyncio.create_task(satellite.run(), name="satellite run")
 
     try:
         await server.run(partial(SatelliteEventHandler, wyoming_info, satellite, args))
