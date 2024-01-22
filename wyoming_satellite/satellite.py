@@ -261,7 +261,7 @@ class SatelliteBase:
             await self.trigger_detect()
         elif Detection.is_type(event.type):
             # Wake word detected
-            _LOGGER.debug("Wake word detected")
+            _LOGGER.debug("Remote wake word detected")
             await self.trigger_detection(Detection.from_event(event))
         elif VoiceStarted.is_type(event.type):
             # STT start
@@ -349,8 +349,6 @@ class SatelliteBase:
             self._event_task = asyncio.create_task(
                 self._event_task_proc(), name="event"
             )
-
-        _LOGGER.info("Connected to services")
 
     async def _disconnect_from_services(self) -> None:
         """Disconnects from running services."""
@@ -720,6 +718,7 @@ class SatelliteBase:
                         await asyncio.sleep(self.settings.wake.reconnect_seconds)
                         continue
 
+                    _LOGGER.debug("Event received from wake service")
                     await self.event_from_wake(event)
 
             except asyncio.CancelledError:
@@ -908,6 +907,7 @@ class AlwaysStreamingSatellite(SatelliteBase):
 
     def __init__(self, settings: SatelliteSettings) -> None:
         super().__init__(settings)
+        _LOGGER.debug("Initiating an AlwaysStreamingSatellite")
         self.is_streaming = False
 
         if settings.vad.enabled:
@@ -974,6 +974,7 @@ class VadStreamingSatellite(SatelliteBase):
             raise ValueError("VAD is not enabled")
 
         super().__init__(settings)
+        _LOGGER.debug("Initiating a VadStreamingSatellite")
         self.is_streaming = False
         self.vad = SileroVad(
             threshold=settings.vad.threshold, trigger_level=settings.vad.trigger_level
@@ -1135,6 +1136,7 @@ class WakeStreamingSatellite(SatelliteBase):
             raise ValueError("Local wake word detection is not enabled")
 
         super().__init__(settings)
+        _LOGGER.debug("Initiating a WakeStreamingSatellite")
         self.is_streaming = False
 
         # Timestamp in the future when the refractory period is over (set with
@@ -1249,6 +1251,7 @@ class WakeStreamingSatellite(SatelliteBase):
             return
 
         if Detection.is_type(event.type):
+            _LOGGER.debug("Detection triggered from event")
             detection = Detection.from_event(event)
 
             # Check refractory period to avoid multiple back-to-back detections
