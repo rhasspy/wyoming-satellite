@@ -840,7 +840,54 @@ class SatelliteBase:
                     await event_client.connect()
                     _LOGGER.debug("Connected to event service")
 
-                await event_client.write_event(event)
+                    # Reset
+                    from_client_task = None
+                    to_client_task = None
+                    pending = set()
+                    self._event_queue = asyncio.Queue()
+
+                # Read/write in "parallel"
+                if to_client_task is None:
+                    # From satellite to event service
+                    to_client_task = asyncio.create_task(
+                        self._event_queue.get(), name="event_to_client"
+                    )
+                    pending.add(to_client_task)
+
+                if from_client_task is None:
+                    # From event service to satellite
+                    from_client_task = asyncio.create_task(
+                        event_client.read_event(), name="event_from_client"
+                    )
+                    pending.add(from_client_task)
+
+                done, pending = await asyncio.wait(
+                    pending, return_when=asyncio.FIRST_COMPLETED
+                )
+
+                if to_client_task in done:
+                    # Forward event to event service for handling
+                    assert to_client_task is not None
+                    event = to_client_task.result()
+                    to_client_task = None
+                    await event_client.write_event(event)
+
+                if from_client_task in done:
+                    # Event from event service (button for detection)
+                    assert from_client_task is not None
+                    event = from_client_task.result()
+                    from_client_task = None
+
+                    if event is None:
+                        _LOGGER.warning("Event service disconnected")
+                        await _disconnect()
+                        event_client = None  # reconnect
+                        await asyncio.sleep(self.settings.wake.reconnect_seconds)
+                        continue
+
+                    _LOGGER.debug("Event received from event service")
+                    if Detection.is_type(event.type):
+                        await self.event_from_wake(event)
             except asyncio.CancelledError:
                 break
             except Exception:
