@@ -845,6 +845,9 @@ class SatelliteBase:
                     pending = set()
                     self._event_queue = asyncio.Queue()
 
+                    # Inform event service of the wake word handled by this satellite instance 
+                    await self.forward_event(Detect(names=self.settings.wake.names).event())
+ 
                 # Read/write in "parallel"
                 if to_client_task is None:
                     # From satellite to event service
