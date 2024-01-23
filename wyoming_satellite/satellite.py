@@ -831,8 +831,6 @@ class SatelliteBase:
                 if self._event_queue is None:
                     self._event_queue = asyncio.Queue()
 
-                event = await self._event_queue.get()
-
                 if event_client is None:
                     event_client = self._make_event_client()
                     assert event_client is not None
@@ -884,7 +882,7 @@ class SatelliteBase:
                         _LOGGER.warning("Event service disconnected")
                         await _disconnect()
                         event_client = None  # reconnect
-                        await asyncio.sleep(self.settings.wake.reconnect_seconds)
+                        await asyncio.sleep(self.settings.event.reconnect_seconds)
                         continue
 
                     _LOGGER.debug("Event received from event service")
@@ -896,7 +894,6 @@ class SatelliteBase:
                 _LOGGER.exception("Unexpected error in event read task")
                 await _disconnect()
                 event_client = None  # reconnect
-                self._event_queue = None
                 await asyncio.sleep(self.settings.event.reconnect_seconds)
 
         await _disconnect()
