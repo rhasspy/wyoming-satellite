@@ -173,9 +173,9 @@ Satellites can respond to events from the server by running commands:
 * `--stt-start-command` - user started speaking (no stdin)
 * `--stt-stop-command` - user stopped speaking (no stdin)
 * `--synthesize-command` - text-to-speech text is returned (text on stdin)
-* `--tts-start-command` - text-to-speech response started (no stdin)
-* `--tts-stop-command` - text-to-speech response stopped (no stdin)
-* `--played-command` - text-to-speech response was played (no stdin)
+* `--tts-start-command` - text-to-speech response started streaming from server (no stdin)
+* `--tts-stop-command` - text-to-speech response stopped streaming from server. Can still being played by snd service (no stdin)
+* `--played-command` - text-to-speech audio finished playing (no stdin)
 * `--error-command` - an error was sent from the server (text on stdin)
 * `--connected-command` - satellite connected to server
 * `--disconnected-command` - satellite disconnected from server
