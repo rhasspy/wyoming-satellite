@@ -550,7 +550,7 @@ class SatelliteBase:
                     event.type
                 ):
                     await _disconnect()
-                    await self.forward_event(Played().event())
+                    await self.trigger_played()
                     snd_client = None  # reconnect on next event
             except asyncio.CancelledError:
                 break
@@ -774,6 +774,11 @@ class SatelliteBase:
             self.settings.snd.awake_wav,
             mute_microphone=self.settings.mic.mute_during_awake_wav,
         )
+
+    async def trigger_played(self) -> None:
+        """Called when audio stopped playing"""
+        await run_event_command(self.settings.event.played)
+        await self.forward_event(Played().event())
 
     async def trigger_transcript(self, transcript: Transcript) -> None:
         """Called when speech-to-text text is received."""
