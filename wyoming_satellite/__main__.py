@@ -74,15 +74,16 @@ async def main() -> None:
     )
     parser.add_argument("--mic-auto-gain", type=int, default=0, choices=list(range(32)))
     parser.add_argument(
-        "--mic-seconds-to-mute-after-awake-wav", 
-        type=float, 
-        default=0.5, 
-        help="Seconds to mute after awake wav is played")
+        "--mic-seconds-to-mute-after-awake-wav",
+        type=float,
+        default=0.5,
+        help="Seconds to mute microphone after awake wav is finished playing (default: 0.5)",
+    )
     parser.add_argument(
-        "--mic-mute-during-awake-wav", 
-        type=bool, 
-        default=True, 
-        help="Determine if mic should be muted while awake wav is played")
+        "--mic-no-mute-during-awake-wav",
+        action="store_true",
+        help="Don't mute the microphone while awake wav is being played",
+    )
 
     # Sound output
     parser.add_argument("--snd-uri", help="URI of Wyoming sound service")
@@ -316,7 +317,7 @@ async def main() -> None:
             auto_gain=args.mic_auto_gain,
             noise_suppression=args.mic_noise_suppression,
             seconds_to_mute_after_awake_wav=args.mic_seconds_to_mute_after_awake_wav,
-            mute_during_awake_wav=args.mic_mute_during_awake_wav
+            mute_during_awake_wav=(not args.mic_no_mute_during_awake_wav),
         ),
         vad=VadSettings(
             enabled=args.vad,
