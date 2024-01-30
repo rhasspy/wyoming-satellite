@@ -159,9 +159,6 @@ async def main() -> None:
         "--detection-command", help="Command to run when wake word is detected"
     )
     parser.add_argument(
-        "--played-command", help="Command to run when audio stopped playing"
-    )
-    parser.add_argument(
         "--transcript-command",
         help="Command to run when speech to text transcript is returned",
     )
@@ -184,6 +181,10 @@ async def main() -> None:
     parser.add_argument(
         "--tts-stop-command",
         help="Command to run when text to speech response stops",
+    )
+    parser.add_argument(
+        "--tts-played-command",
+        help="Command to run when text-to-speech audio stopped playing",
     )
     parser.add_argument(
         "--streaming-start-command",
@@ -337,7 +338,7 @@ async def main() -> None:
             streaming_stop=split_command(args.streaming_stop_command),
             detect=split_command(args.detect_command),
             detection=split_command(args.detection_command),
-            played=split_command(args.played_command),
+            played=split_command(args.tts_played_command),
             transcript=split_command(args.transcript_command),
             stt_start=split_command(args.stt_start_command),
             stt_stop=split_command(args.stt_stop_command),

@@ -25,7 +25,7 @@ from wyoming.satellite import (
     StreamingStarted,
     StreamingStopped,
 )
-from wyoming.snd import SndProcessAsyncClient, Played
+from wyoming.snd import Played, SndProcessAsyncClient
 from wyoming.tts import Synthesize
 from wyoming.vad import VoiceStarted, VoiceStopped
 from wyoming.wake import Detect, Detection, WakeProcessAsyncClient
