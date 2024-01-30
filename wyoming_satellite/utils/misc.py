@@ -2,8 +2,11 @@
 import argparse
 import asyncio
 import logging
+import re
 import shlex
+import unicodedata
 import uuid
+from functools import lru_cache
 from typing import List, Optional
 
 _LOGGER = logging.getLogger()
@@ -56,3 +59,24 @@ def split_command(command: Optional[str]) -> Optional[List[str]]:
         return None
 
     return shlex.split(command)
+
+
+@lru_cache
+def normalize_wake_word(wake_word: str) -> str:
+    """Normalizes a wake word name for comparison."""
+
+    # Lower case
+    wake_word = wake_word.strip().casefold()
+
+    # Remove version numbers like v1.0
+    wake_word = re.sub(r"v[0-9]+(\.[0-9])+", "", wake_word)
+
+    # Replace anything besides letters/numbers with whitespace
+    wake_word = "".join(
+        c if unicodedata.category(c) in ("Ll", "Nd") else " " for c in wake_word
+    )
+
+    # Normalize whitespace
+    wake_word = " ".join(wake_word.strip().split())
+
+    return wake_word

@@ -101,10 +101,18 @@ class SndSettings(ServiceSettings):
 
 
 @dataclass(frozen=True)
+class WakeWordAndPipeline:
+    """Wake word name + optional pipeline name."""
+
+    name: str
+    pipeline: Optional[str] = None
+
+
+@dataclass(frozen=True)
 class WakeSettings(ServiceSettings):
     """Wake word service settings."""
 
-    names: Optional[List[str]] = None
+    names: Optional[List[WakeWordAndPipeline]] = None
     """List of wake word names to listen for."""
 
     rate: int = 16000
