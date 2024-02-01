@@ -85,6 +85,11 @@ async def main() -> None:
         action="store_true",
         help="Don't mute the microphone while awake wav is being played",
     )
+    parser.add_argument(
+        "--mic-channel-index",
+        type=int,
+        help="Take microphone input from a specific channel (first channel is 0)",
+    )
 
     # Sound output
     parser.add_argument("--snd-uri", help="URI of Wyoming sound service")
@@ -321,6 +326,7 @@ async def main() -> None:
             noise_suppression=args.mic_noise_suppression,
             seconds_to_mute_after_awake_wav=args.mic_seconds_to_mute_after_awake_wav,
             mute_during_awake_wav=(not args.mic_no_mute_during_awake_wav),
+            channel_index=args.mic_channel_index,
         ),
         vad=VadSettings(
             enabled=args.vad,

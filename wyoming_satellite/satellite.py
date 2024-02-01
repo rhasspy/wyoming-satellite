@@ -1,4 +1,5 @@
 """Satellite code."""
+import array
 import asyncio
 import logging
 import math
@@ -458,15 +459,36 @@ class SatelliteBase:
                     continue
 
                 # Audio processing
-                if self.settings.mic.needs_processing and AudioChunk.is_type(
-                    event.type
+                if (
+                    self.settings.mic.needs_processing
+                    or (self.settings.mic.channel_index is not None)
+                    and AudioChunk.is_type(event.type)
                 ):
                     chunk = AudioChunk.from_event(event)
-                    audio_bytes = self._process_mic_audio(chunk.audio)
+                    if self.settings.mic.channel_index is not None:
+                        if chunk.width != 2:
+                            raise ValueError(
+                                "Mic channel index selection requires 16-bit samples"
+                            )
+
+                        # Convert to unsigned 16-bit array to make channel extraction easier
+                        audio_array = array.array("H", chunk.audio)
+                        audio_bytes = audio_array[
+                            self.settings.mic.channel_index :: chunk.channels
+                        ].tobytes()
+
+                    if self.settings.mic.needs_processing:
+                        if audio_bytes is None:
+                            audio_bytes = chunk.audio
+
+                        audio_bytes = self._process_mic_audio(chunk.audio)
+
                     event = AudioChunk(
                         rate=chunk.rate,
                         width=chunk.width,
-                        channels=chunk.channels,
+                        channels=chunk.channels
+                        if (self.settings.mic.channel_index is None)
+                        else 1,
                         audio=audio_bytes,
                     ).event()
                 else:

@@ -55,6 +55,9 @@ class MicSettings(ServiceSettings):
     seconds_to_mute_after_awake_wav: float = 0.5
     """Extra second(s) of microphone audio to mute after awake WAV has finished playing."""
 
+    channel_index: Optional[int] = None
+    """Index of microphone channel to use. When not set, all input channels are used as-is."""
+
     @property
     def needs_webrtc(self) -> bool:
         """True if webrtc audio enhancements are needed."""
