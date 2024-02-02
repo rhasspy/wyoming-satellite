@@ -73,6 +73,17 @@ async def main() -> None:
         "--mic-noise-suppression", type=int, default=0, choices=(0, 1, 2, 3, 4)
     )
     parser.add_argument("--mic-auto-gain", type=int, default=0, choices=list(range(32)))
+    parser.add_argument(
+        "--mic-seconds-to-mute-after-awake-wav",
+        type=float,
+        default=0.5,
+        help="Seconds to mute microphone after awake wav is finished playing (default: 0.5)",
+    )
+    parser.add_argument(
+        "--mic-no-mute-during-awake-wav",
+        action="store_true",
+        help="Don't mute the microphone while awake wav is being played",
+    )
 
     # Sound output
     parser.add_argument("--snd-uri", help="URI of Wyoming sound service")
@@ -181,6 +192,10 @@ async def main() -> None:
     parser.add_argument(
         "--tts-stop-command",
         help="Command to run when text to speech response stops",
+    )
+    parser.add_argument(
+        "--tts-played-command",
+        help="Command to run when text-to-speech audio stopped playing",
     )
     parser.add_argument(
         "--streaming-start-command",
@@ -301,6 +316,8 @@ async def main() -> None:
             volume_multiplier=args.mic_volume_multiplier,
             auto_gain=args.mic_auto_gain,
             noise_suppression=args.mic_noise_suppression,
+            seconds_to_mute_after_awake_wav=args.mic_seconds_to_mute_after_awake_wav,
+            mute_during_awake_wav=(not args.mic_no_mute_during_awake_wav),
         ),
         vad=VadSettings(
             enabled=args.vad,
@@ -334,6 +351,7 @@ async def main() -> None:
             streaming_stop=split_command(args.streaming_stop_command),
             detect=split_command(args.detect_command),
             detection=split_command(args.detection_command),
+            played=split_command(args.tts_played_command),
             transcript=split_command(args.transcript_command),
             stt_start=split_command(args.stt_start_command),
             stt_stop=split_command(args.stt_stop_command),

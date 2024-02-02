@@ -149,6 +149,7 @@ class EventSettings(ServiceSettings):
     streaming_stop: Optional[List[str]] = None
     detect: Optional[List[str]] = None
     detection: Optional[List[str]] = None
+    played: Optional[List[str]] = None
     transcript: Optional[List[str]] = None
     stt_start: Optional[List[str]] = None
     stt_stop: Optional[List[str]] = None
