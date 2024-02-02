@@ -285,7 +285,7 @@ class SatelliteBase:
         if not AudioChunk.is_type(event.type):
             await self.forward_event(event)
 
-    async def _send_run_pipeline(self) -> None:
+    async def _send_run_pipeline(self, ask: Optional[bool] = False) -> None:
         """Sends a RunPipeline event with the correct stages."""
         if self.settings.wake.enabled:
             # Local wake word detection
@@ -302,6 +302,16 @@ class SatelliteBase:
         else:
             # No audio output
             end_stage = PipelineStage.HANDLE
+
+        if ask:
+            end_stage = PipelineStage.ASR
+            restart_on_end = False
+
+        _LOGGER.debug(
+            "RunPipeline from %s to %s",
+            start_stage,
+            end_stage,
+        )
 
         run_pipeline = RunPipeline(
             start_stage=start_stage, end_stage=end_stage, restart_on_end=restart_on_end
@@ -1160,7 +1170,14 @@ class WakeStreamingSatellite(SatelliteBase):
         is_transcript = False
         is_error = False
 
-        if RunSatellite.is_type(event.type):
+        if Detection.is_type(event.type):
+            if (True): #((event.data.get("name") == "remote") or (event.data.get("name") == "ask")):
+                _LOGGER.debug("Detection called. Name: %s", event.data.get("name"))
+                # Remote request for Detection
+                await self.event_from_wake(event)
+                return
+
+        elif RunSatellite.is_type(event.type):
             is_run_satellite = True
             self._is_paused = False
 
@@ -1283,7 +1300,7 @@ class WakeStreamingSatellite(SatelliteBase):
                 # No refractory period
                 self.refractory_timestamp.pop(detection.name, None)
 
-            await self._send_run_pipeline()
+            await self._send_run_pipeline(event.data.get("name") == "ask")
             await self.forward_event(event)  # forward to event service
             await self.trigger_detection(Detection.from_event(event))
             await self.trigger_streaming_start()
