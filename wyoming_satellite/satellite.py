@@ -1176,7 +1176,7 @@ class WakeStreamingSatellite(SatelliteBase):
         is_error = False
 
         if Detection.is_type(event.type):
-            if (True): #((event.data.get("name") == "remote") or (event.data.get("name") == "ask")):
+            if ((event.data.get("name") == "remote") or (event.data.get("name") == "ask")):
                 _LOGGER.debug("Detection called. Name: %s", event.data.get("name"))
                 # Remote request for Detection
                 await self.event_from_wake(event)
