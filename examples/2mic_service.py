@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Controls the LEDs on the ReSpeaker 2mic HAT."""
+"""Controls the LEDs and GPIO Button on the ReSpeaker 2mic HAT."""
 import argparse
 import asyncio
 import logging
@@ -10,6 +10,8 @@ from typing import Tuple
 
 import gpiozero
 import spidev
+import RPi.GPIO as GPIO
+
 from wyoming.asr import Transcript
 from wyoming.event import Event
 from wyoming.satellite import (
@@ -21,12 +23,13 @@ from wyoming.satellite import (
 )
 from wyoming.server import AsyncEventHandler, AsyncServer
 from wyoming.vad import VoiceStarted
-from wyoming.wake import Detection
+from wyoming.wake import Detect, Detection
 
 _LOGGER = logging.getLogger()
 
 NUM_LEDS = 3
 LEDS_GPIO = 12
+BUTTON_GPIO = 17
 RGB_MAP = {
     "rgb": [3, 2, 1],
     "rbg": [3, 1, 2],
@@ -43,12 +46,13 @@ async def main() -> None:
     parser.add_argument("--uri", required=True, help="unix:// or tcp://")
     parser.add_argument("--debug", action="store_true", help="Log DEBUG messages")
     parser.add_argument("--led-brightness", type=int, default=31, help="LED brightness (integer from 1 to 31)")
+    parser.add_argument("--log-format", default=logging.BASIC_FORMAT, help="Format for log messages")
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO)
-    _LOGGER.debug(args)
+    logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO, format=args.log_format)
 
-    _LOGGER.info("Ready")
+    _LOGGER.debug(args)
+    _LOGGER.info("Event service Ready")
 
     # Turn on power to LEDs
     led_power = gpiozero.LED(LEDS_GPIO, active_high=False)
@@ -56,11 +60,15 @@ async def main() -> None:
 
     leds = APA102(num_led=NUM_LEDS, global_brightness=args.led_brightness)
 
+   # GPIO Button
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setup(BUTTON_GPIO, GPIO.IN)
+
     # Start server
     server = AsyncServer.from_uri(args.uri)
 
     try:
-        await server.run(partial(LEDsEventHandler, args, leds))
+        await server.run(partial(EventHandler, args, leds))
     except KeyboardInterrupt:
         pass
     finally:
@@ -78,7 +86,7 @@ _BLUE = (0, 0, 255)
 _GREEN = (0, 255, 0)
 
 
-class LEDsEventHandler(AsyncEventHandler):
+class EventHandler(AsyncEventHandler):
     """Event handler for clients."""
 
     def __init__(
@@ -93,13 +101,25 @@ class LEDsEventHandler(AsyncEventHandler):
         self.cli_args = cli_args
         self.client_id = str(time.monotonic_ns())
         self.leds = leds
+        self.detect_name = None
+
+        GPIO.add_event_detect(BUTTON_GPIO, GPIO.RISING, callback=self.button_callback)
 
         _LOGGER.debug("Client connected: %s", self.client_id)
+
+
+    def button_callback(self, button_pin):
+        _LOGGER.debug("Button pressed #%s", button_pin)
+        asyncio.run(self.write_event(Detection(name=self.detect_name, timestamp=time.monotonic_ns()).event()))
+
 
     async def handle_event(self, event: Event) -> bool:
         _LOGGER.debug(event)
 
-        if StreamingStarted.is_type(event.type):
+        if Detect.is_type(event.type):
+            detect = Detect.from_event(event)
+            self.detect_name = detect.names[0]
+        elif StreamingStarted.is_type(event.type):
             self.color(_YELLOW)
         elif Detection.is_type(event.type):
             self.color(_BLUE)

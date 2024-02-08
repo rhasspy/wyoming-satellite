@@ -10,6 +10,7 @@ build
 htmlcov
 
 /.venv/
+/examples/.venv/
 .mypy_cache/
 __pycache__/
 

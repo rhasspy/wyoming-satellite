@@ -261,7 +261,7 @@ class SatelliteBase:
             await self.trigger_detect()
         elif Detection.is_type(event.type):
             # Wake word detected
-            _LOGGER.debug("Wake word detected")
+            _LOGGER.debug("Remote wake word detected")
             await self.trigger_detection(Detection.from_event(event))
         elif VoiceStarted.is_type(event.type):
             # STT start
@@ -285,7 +285,7 @@ class SatelliteBase:
         if not AudioChunk.is_type(event.type):
             await self.forward_event(event)
 
-    async def _send_run_pipeline(self) -> None:
+    async def _send_run_pipeline(self, ask: Optional[bool] = False) -> None:
         """Sends a RunPipeline event with the correct stages."""
         if self.settings.wake.enabled:
             # Local wake word detection
@@ -302,6 +302,16 @@ class SatelliteBase:
         else:
             # No audio output
             end_stage = PipelineStage.HANDLE
+
+        if ask:
+            end_stage = PipelineStage.ASR
+            restart_on_end = False
+
+        _LOGGER.debug(
+            "RunPipeline from %s to %s",
+            start_stage,
+            end_stage,
+        )
 
         run_pipeline = RunPipeline(
             start_stage=start_stage, end_stage=end_stage, restart_on_end=restart_on_end
@@ -349,8 +359,6 @@ class SatelliteBase:
             self._event_task = asyncio.create_task(
                 self._event_task_proc(), name="event"
             )
-
-        _LOGGER.info("Connected to services")
 
     async def _disconnect_from_services(self) -> None:
         """Disconnects from running services."""
@@ -550,7 +558,8 @@ class SatelliteBase:
                     event.type
                 ):
                     await _disconnect()
-                    await self.trigger_played()
+                    if not hasattr(event, 'wav'):
+                        await self.trigger_played()
                     snd_client = None  # reconnect on next event
             except asyncio.CancelledError:
                 break
@@ -596,6 +605,7 @@ class SatelliteBase:
                 samples_per_chunk=self.settings.snd.samples_per_chunk,
                 volume_multiplier=self.settings.snd.volume_multiplier,
             ):
+                event.wav = True
                 await self.event_to_snd(event)
         except Exception:
             # Unmute in case of an error
@@ -720,6 +730,7 @@ class SatelliteBase:
                         await asyncio.sleep(self.settings.wake.reconnect_seconds)
                         continue
 
+                    _LOGGER.debug("Event received from wake service")
                     await self.event_from_wake(event)
 
             except asyncio.CancelledError:
@@ -837,22 +848,69 @@ class SatelliteBase:
                 if self._event_queue is None:
                     self._event_queue = asyncio.Queue()
 
-                event = await self._event_queue.get()
-
                 if event_client is None:
                     event_client = self._make_event_client()
                     assert event_client is not None
                     await event_client.connect()
                     _LOGGER.debug("Connected to event service")
 
-                await event_client.write_event(event)
+                    # Reset
+                    from_client_task = None
+                    to_client_task = None
+                    pending = set()
+                    self._event_queue = asyncio.Queue()
+
+                    # Inform event service of the wake word handled by this satellite instance 
+                    await self.forward_event(Detect(names=self.settings.wake.names).event())
+ 
+                # Read/write in "parallel"
+                if to_client_task is None:
+                    # From satellite to event service
+                    to_client_task = asyncio.create_task(
+                        self._event_queue.get(), name="event_to_client"
+                    )
+                    pending.add(to_client_task)
+
+                if from_client_task is None:
+                    # From event service to satellite
+                    from_client_task = asyncio.create_task(
+                        event_client.read_event(), name="event_from_client"
+                    )
+                    pending.add(from_client_task)
+
+                done, pending = await asyncio.wait(
+                    pending, return_when=asyncio.FIRST_COMPLETED
+                )
+
+                if to_client_task in done:
+                    # Forward event to event service for handling
+                    assert to_client_task is not None
+                    event = to_client_task.result()
+                    to_client_task = None
+                    await event_client.write_event(event)
+
+                if from_client_task in done:
+                    # Event from event service (button for detection)
+                    assert from_client_task is not None
+                    event = from_client_task.result()
+                    from_client_task = None
+
+                    if event is None:
+                        _LOGGER.warning("Event service disconnected")
+                        await _disconnect()
+                        event_client = None  # reconnect
+                        await asyncio.sleep(self.settings.event.reconnect_seconds)
+                        continue
+
+                    _LOGGER.debug("Event received from event service")
+                    if Detection.is_type(event.type):
+                        await self.event_from_wake(event)
             except asyncio.CancelledError:
                 break
             except Exception:
                 _LOGGER.exception("Unexpected error in event read task")
                 await _disconnect()
                 event_client = None  # reconnect
-                self._event_queue = None
                 await asyncio.sleep(self.settings.event.reconnect_seconds)
 
         await _disconnect()
@@ -866,6 +924,7 @@ class AlwaysStreamingSatellite(SatelliteBase):
 
     def __init__(self, settings: SatelliteSettings) -> None:
         super().__init__(settings)
+        _LOGGER.debug("Initiating an AlwaysStreamingSatellite")
         self.is_streaming = False
 
         if settings.vad.enabled:
@@ -932,6 +991,7 @@ class VadStreamingSatellite(SatelliteBase):
             raise ValueError("VAD is not enabled")
 
         super().__init__(settings)
+        _LOGGER.debug("Initiating a VadStreamingSatellite")
         self.is_streaming = False
         self.vad = SileroVad(
             threshold=settings.vad.threshold, trigger_level=settings.vad.trigger_level
@@ -1093,6 +1153,7 @@ class WakeStreamingSatellite(SatelliteBase):
             raise ValueError("Local wake word detection is not enabled")
 
         super().__init__(settings)
+        _LOGGER.debug("Initiating a WakeStreamingSatellite")
         self.is_streaming = False
 
         # Timestamp in the future when the refractory period is over (set with
@@ -1116,7 +1177,14 @@ class WakeStreamingSatellite(SatelliteBase):
         is_transcript = False
         is_error = False
 
-        if RunSatellite.is_type(event.type):
+        if Detection.is_type(event.type):
+            if ((event.data.get("name") == "remote") or (event.data.get("name") == "ask")):
+                _LOGGER.debug("Detection called. Name: %s", event.data.get("name"))
+                # Remote request for Detection
+                await self.event_from_wake(event)
+                return
+
+        elif RunSatellite.is_type(event.type):
             is_run_satellite = True
             self._is_paused = False
 
@@ -1207,6 +1275,7 @@ class WakeStreamingSatellite(SatelliteBase):
             return
 
         if Detection.is_type(event.type):
+            _LOGGER.debug("Detection triggered from event")
             detection = Detection.from_event(event)
 
             # Check refractory period to avoid multiple back-to-back detections
@@ -1238,7 +1307,7 @@ class WakeStreamingSatellite(SatelliteBase):
                 # No refractory period
                 self.refractory_timestamp.pop(detection.name, None)
 
-            await self._send_run_pipeline()
+            await self._send_run_pipeline(event.data.get("name") == "ask")
             await self.forward_event(event)  # forward to event service
             await self.trigger_detection(Detection.from_event(event))
             await self.trigger_streaming_start()
