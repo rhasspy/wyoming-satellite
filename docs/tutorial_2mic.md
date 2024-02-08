@@ -385,4 +385,7 @@ Try a voice command and see if the LEDs change. Use `journalctl` to check the lo
 journalctl -u 2mic_leds.service -f
 ```
 
+If you encounter any issues, you can add the `--debug` argument to the command line to increase the log level.
+To control the brightness of the LEDS, use the `--led-brightness ` argument, which accepts integer numbers from 1 to 31.
+
 Make sure to run `sudo systemctl daemon-reload` every time you make changes to the service.
