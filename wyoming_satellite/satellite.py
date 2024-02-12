@@ -594,7 +594,6 @@ class SatelliteBase:
             for event in wav_to_events(
                 wav_path,
                 samples_per_chunk=self.settings.snd.samples_per_chunk,
-                volume_multiplier=self.settings.snd.volume_multiplier,
             ):
                 await self.event_to_snd(event)
         except Exception:
