@@ -15,6 +15,7 @@ from wyoming.audio import AudioChunk, AudioFormat, AudioStart, AudioStop
 from wyoming.client import AsyncClient
 from wyoming.error import Error
 from wyoming.event import Event, async_write_event
+from wyoming.info import Describe, Info
 from wyoming.mic import MicProcessAsyncClient
 from wyoming.ping import Ping, Pong
 from wyoming.pipeline import PipelineStage, RunPipeline
@@ -46,6 +47,7 @@ _LOGGER = logging.getLogger()
 
 _PONG_TIMEOUT: Final = 5
 _PING_SEND_DELAY: Final = 2
+_WAKE_INFO_TIMEOUT: Final = 2
 
 
 class State(Enum):
@@ -898,6 +900,13 @@ class SatelliteBase:
 
         await _disconnect()
 
+    # -------------------------------------------------------------------------
+    # Info
+    # -------------------------------------------------------------------------
+
+    async def update_info(self, info: Info) -> None:
+        pass
+
 
 # -----------------------------------------------------------------------------
 
@@ -1150,6 +1159,9 @@ class WakeStreamingSatellite(SatelliteBase):
 
         self._is_paused = False
 
+        self._wake_info: Optional[Info] = None
+        self._wake_info_ready = asyncio.Event()
+
     async def event_from_server(self, event: Event) -> None:
         # Only check event types once
         is_run_satellite = False
@@ -1243,8 +1255,13 @@ class WakeStreamingSatellite(SatelliteBase):
             await self.event_to_wake(event)
 
     async def event_from_wake(self, event: Event) -> None:
+        if Info.is_type(event.type):
+            self._wake_info = Info.from_event(event)
+            self._wake_info_ready.set()
+            return
+
         if self.is_streaming or (self.server_id is None):
-            # Not streaming or no server connected
+            # Not detecting or no server connected
             return
 
         if Detection.is_type(event.type):
@@ -1281,6 +1298,9 @@ class WakeStreamingSatellite(SatelliteBase):
                 # No refractory period
                 self.refractory_timestamp.pop(detection.name, None)
 
+            # Forward to the server
+            await self.event_to_server(event)
+
             # Match detected wake word name with pipeline name
             pipeline_name: Optional[str] = None
             if self.settings.wake.names:
@@ -1294,3 +1314,19 @@ class WakeStreamingSatellite(SatelliteBase):
             await self.forward_event(event)  # forward to event service
             await self.trigger_detection(Detection.from_event(event))
             await self.trigger_streaming_start()
+
+    async def update_info(self, info: Info) -> None:
+        self._wake_info = None
+        self._wake_info_ready.clear()
+        await self.event_to_wake(Describe().event())
+
+        try:
+            await asyncio.wait_for(
+                self._wake_info_ready.wait(), timeout=_WAKE_INFO_TIMEOUT
+            )
+
+            if self._wake_info is not None:
+                # Update wake info only
+                info.wake = self._wake_info.wake
+        except asyncio.TimeoutError:
+            _LOGGER.warning("Failed to get info from wake service")

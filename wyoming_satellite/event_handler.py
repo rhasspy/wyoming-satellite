@@ -26,7 +26,7 @@ class SatelliteEventHandler(AsyncEventHandler):
         super().__init__(*args, **kwargs)
 
         self.cli_args = cli_args
-        self.wyoming_info_event = wyoming_info.event()
+        self.wyoming_info = wyoming_info
         self.client_id = str(time.monotonic_ns())
         self.satellite = satellite
 
@@ -35,7 +35,8 @@ class SatelliteEventHandler(AsyncEventHandler):
     async def handle_event(self, event: Event) -> bool:
         """Handle events from the server."""
         if Describe.is_type(event.type):
-            await self.write_event(self.wyoming_info_event)
+            await self.satellite.update_info(self.wyoming_info)
+            await self.write_event(self.wyoming_info.event())
             return True
 
         if self.satellite.server_id is None:
