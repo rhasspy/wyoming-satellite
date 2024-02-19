@@ -101,8 +101,8 @@ async def test_multiple_wakeups(tmp_path: Path) -> None:
         await satellite.event_from_server(Transcript("test").event())
 
         # Should not trigger again within refractory period (default: 5 sec)
-        # with pytest.raises(asyncio.TimeoutError):
-        #     await asyncio.wait_for(event_client.wake_event.wait(), timeout=0.15)
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(event_client.wake_event.wait(), timeout=0.15)
 
         await satellite.stop()
         await satellite_task

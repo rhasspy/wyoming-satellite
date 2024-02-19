@@ -1,4 +1,5 @@
 """Satellite code."""
+import array
 import asyncio
 import logging
 import math
@@ -6,14 +7,15 @@ import time
 import wave
 from enum import Enum, auto
 from pathlib import Path
-from typing import Callable, Dict, Final, Optional, Set, Union
+from typing import Callable, Dict, Final, List, Optional, Set, Union
 
 from pyring_buffer import RingBuffer
 from wyoming.asr import Transcript
-from wyoming.audio import AudioChunk, AudioStart, AudioStop
+from wyoming.audio import AudioChunk, AudioFormat, AudioStart, AudioStop
 from wyoming.client import AsyncClient
 from wyoming.error import Error
 from wyoming.event import Event, async_write_event
+from wyoming.info import Describe, Info
 from wyoming.mic import MicProcessAsyncClient
 from wyoming.ping import Ping, Pong
 from wyoming.pipeline import PipelineStage, RunPipeline
@@ -31,7 +33,13 @@ from wyoming.vad import VoiceStarted, VoiceStopped
 from wyoming.wake import Detect, Detection, WakeProcessAsyncClient
 
 from .settings import SatelliteSettings
-from .utils import DebugAudioWriter, multiply_volume, run_event_command, wav_to_events
+from .utils import (
+    DebugAudioWriter,
+    multiply_volume,
+    normalize_wake_word,
+    run_event_command,
+    wav_to_events,
+)
 from .vad import SileroVad
 from .webrtc import WebRtcAudio
 
@@ -39,6 +47,7 @@ _LOGGER = logging.getLogger()
 
 _PONG_TIMEOUT: Final = 5
 _PING_SEND_DELAY: Final = 2
+_WAKE_INFO_TIMEOUT: Final = 2
 
 
 class State(Enum):
@@ -285,7 +294,7 @@ class SatelliteBase:
         if not AudioChunk.is_type(event.type):
             await self.forward_event(event)
 
-    async def _send_run_pipeline(self) -> None:
+    async def _send_run_pipeline(self, pipeline_name: Optional[str] = None) -> None:
         """Sends a RunPipeline event with the correct stages."""
         if self.settings.wake.enabled:
             # Local wake word detection
@@ -304,8 +313,17 @@ class SatelliteBase:
             end_stage = PipelineStage.HANDLE
 
         run_pipeline = RunPipeline(
-            start_stage=start_stage, end_stage=end_stage, restart_on_end=restart_on_end
+            start_stage=start_stage,
+            end_stage=end_stage,
+            name=pipeline_name,
+            restart_on_end=restart_on_end,
+            snd_format=AudioFormat(
+                rate=self.settings.snd.rate,
+                width=self.settings.snd.width,
+                channels=self.settings.snd.channels,
+            ),
         ).event()
+        _LOGGER.debug(run_pipeline)
         await self.event_to_server(run_pipeline)
         await self.forward_event(run_pipeline)
 
@@ -443,15 +461,36 @@ class SatelliteBase:
                     continue
 
                 # Audio processing
-                if self.settings.mic.needs_processing and AudioChunk.is_type(
-                    event.type
+                if (
+                    self.settings.mic.needs_processing
+                    or (self.settings.mic.channel_index is not None)
+                    and AudioChunk.is_type(event.type)
                 ):
                     chunk = AudioChunk.from_event(event)
-                    audio_bytes = self._process_mic_audio(chunk.audio)
+                    if self.settings.mic.channel_index is not None:
+                        if chunk.width != 2:
+                            raise ValueError(
+                                "Mic channel index selection requires 16-bit samples"
+                            )
+
+                        # Convert to unsigned 16-bit array to make channel extraction easier
+                        audio_array = array.array("H", chunk.audio)
+                        audio_bytes = audio_array[
+                            self.settings.mic.channel_index :: chunk.channels
+                        ].tobytes()
+
+                    if self.settings.mic.needs_processing:
+                        if audio_bytes is None:
+                            audio_bytes = chunk.audio
+
+                        audio_bytes = self._process_mic_audio(chunk.audio)
+
                     event = AudioChunk(
                         rate=chunk.rate,
                         width=chunk.width,
-                        channels=chunk.channels,
+                        channels=chunk.channels
+                        if (self.settings.mic.channel_index is None)
+                        else 1,
                         audio=audio_bytes,
                     ).event()
                 else:
@@ -733,7 +772,11 @@ class SatelliteBase:
 
     async def _send_wake_detect(self) -> None:
         """Inform wake word service of which wake words to detect."""
-        await self.event_to_wake(Detect(names=self.settings.wake.names).event())
+        wake_names: Optional[List[str]] = None
+        if self.settings.wake.names:
+            wake_names = [w.name for w in self.settings.wake.names]
+
+        await self.event_to_wake(Detect(names=wake_names).event())
         await self.trigger_detect()
 
     # -------------------------------------------------------------------------
@@ -855,6 +898,13 @@ class SatelliteBase:
                 await asyncio.sleep(self.settings.event.reconnect_seconds)
 
         await _disconnect()
+
+    # -------------------------------------------------------------------------
+    # Info
+    # -------------------------------------------------------------------------
+
+    async def update_info(self, info: Info) -> None:
+        pass
 
 
 # -----------------------------------------------------------------------------
@@ -1108,6 +1158,9 @@ class WakeStreamingSatellite(SatelliteBase):
 
         self._is_paused = False
 
+        self._wake_info: Optional[Info] = None
+        self._wake_info_ready = asyncio.Event()
+
     async def event_from_server(self, event: Event) -> None:
         # Only check event types once
         is_run_satellite = False
@@ -1201,8 +1254,13 @@ class WakeStreamingSatellite(SatelliteBase):
             await self.event_to_wake(event)
 
     async def event_from_wake(self, event: Event) -> None:
+        if Info.is_type(event.type):
+            self._wake_info = Info.from_event(event)
+            self._wake_info_ready.set()
+            return
+
         if self.is_streaming or (self.server_id is None):
-            # Not streaming or no server connected
+            # Not detecting or no server connected
             return
 
         if Detection.is_type(event.type):
@@ -1224,6 +1282,8 @@ class WakeStreamingSatellite(SatelliteBase):
             if self.stt_audio_writer is not None:
                 self.stt_audio_writer.start(timestamp=self._debug_recording_timestamp)
 
+            _LOGGER.debug(detection)
+
             self.is_streaming = True
             _LOGGER.debug("Streaming audio")
 
@@ -1237,7 +1297,35 @@ class WakeStreamingSatellite(SatelliteBase):
                 # No refractory period
                 self.refractory_timestamp.pop(detection.name, None)
 
-            await self._send_run_pipeline()
+            # Forward to the server
+            await self.event_to_server(event)
+
+            # Match detected wake word name with pipeline name
+            pipeline_name: Optional[str] = None
+            if self.settings.wake.names:
+                detection_name = normalize_wake_word(detection.name)
+                for wake_name in self.settings.wake.names:
+                    if normalize_wake_word(wake_name.name) == detection_name:
+                        pipeline_name = wake_name.pipeline
+                        break
+
+            await self._send_run_pipeline(pipeline_name=pipeline_name)
             await self.forward_event(event)  # forward to event service
             await self.trigger_detection(Detection.from_event(event))
             await self.trigger_streaming_start()
+
+    async def update_info(self, info: Info) -> None:
+        self._wake_info = None
+        self._wake_info_ready.clear()
+        await self.event_to_wake(Describe().event())
+
+        try:
+            await asyncio.wait_for(
+                self._wake_info_ready.wait(), timeout=_WAKE_INFO_TIMEOUT
+            )
+
+            if self._wake_info is not None:
+                # Update wake info only
+                info.wake = self._wake_info.wake
+        except asyncio.TimeoutError:
+            _LOGGER.warning("Failed to get info from wake service")

@@ -55,6 +55,9 @@ class MicSettings(ServiceSettings):
     seconds_to_mute_after_awake_wav: float = 0.5
     """Extra second(s) of microphone audio to mute after awake WAV has finished playing."""
 
+    channel_index: Optional[int] = None
+    """Index of microphone channel to use. When not set, all input channels are used as-is."""
+
     @property
     def needs_webrtc(self) -> bool:
         """True if webrtc audio enhancements are needed."""
@@ -101,10 +104,18 @@ class SndSettings(ServiceSettings):
 
 
 @dataclass(frozen=True)
+class WakeWordAndPipeline:
+    """Wake word name + optional pipeline name."""
+
+    name: str
+    pipeline: Optional[str] = None
+
+
+@dataclass(frozen=True)
 class WakeSettings(ServiceSettings):
     """Wake word service settings."""
 
-    names: Optional[List[str]] = None
+    names: Optional[List[WakeWordAndPipeline]] = None
     """List of wake word names to listen for."""
 
     rate: int = 16000

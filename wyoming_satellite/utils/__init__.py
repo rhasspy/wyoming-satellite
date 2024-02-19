@@ -10,6 +10,7 @@ from .misc import (
     get_mac_address,
     needs_silero,
     needs_webrtc,
+    normalize_wake_word,
     run_event_command,
     split_command,
 )
@@ -22,6 +23,7 @@ __all__ = [
     "multiply_volume",
     "needs_silero",
     "needs_webrtc",
+    "normalize_wake_word",
     "run_event_command",
     "split_command",
     "wav_to_events",

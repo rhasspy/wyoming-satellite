@@ -24,6 +24,7 @@ from .settings import (
     SndSettings,
     VadSettings,
     WakeSettings,
+    WakeWordAndPipeline,
 )
 from .utils import (
     get_mac_address,
@@ -84,6 +85,11 @@ async def main() -> None:
         action="store_true",
         help="Don't mute the microphone while awake wav is being played",
     )
+    parser.add_argument(
+        "--mic-channel-index",
+        type=int,
+        help="Take microphone input from a specific channel (first channel is 0)",
+    )
 
     # Sound output
     parser.add_argument("--snd-uri", help="URI of Wyoming sound service")
@@ -114,7 +120,9 @@ async def main() -> None:
         "--wake-word-name",
         action="append",
         default=[],
-        help="Name of wake word to listen for (requires --wake-uri)",
+        nargs="+",
+        metavar=("name", "pipeline"),
+        help="Name of wake word to listen for and optional pipeline name to run (requires --wake-uri)",
     )
     parser.add_argument("--wake-command", help="Program to run for wake word detection")
     parser.add_argument(
@@ -318,6 +326,7 @@ async def main() -> None:
             noise_suppression=args.mic_noise_suppression,
             seconds_to_mute_after_awake_wav=args.mic_seconds_to_mute_after_awake_wav,
             mute_during_awake_wav=(not args.mic_no_mute_during_awake_wav),
+            channel_index=args.mic_channel_index,
         ),
         vad=VadSettings(
             enabled=args.vad,
@@ -329,7 +338,9 @@ async def main() -> None:
         wake=WakeSettings(
             uri=args.wake_uri,
             command=split_command(args.wake_command),
-            names=args.wake_word_name,
+            names=[
+                WakeWordAndPipeline(*wake_name) for wake_name in args.wake_word_name
+            ],
             refractory_seconds=args.wake_refractory_seconds
             if args.wake_refractory_seconds > 0
             else None,

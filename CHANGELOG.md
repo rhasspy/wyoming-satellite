@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0
+
+- Add `--tts-played-command`
+- Add `--mic-seconds-to-mute-after-awake-wav` and `--mic-no-mute-during-awake-wav`
+- Send preferred sound format to server
+
 ## 1.1.1
 
 - Bump to wyoming 1.5.2 (package fix)
