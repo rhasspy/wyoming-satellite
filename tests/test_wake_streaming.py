@@ -20,20 +20,9 @@ from wyoming_satellite import (
     WakeStreamingSatellite,
 )
 
-from .shared import AUDIO_CHUNK
+from .shared import MicClient
 
 _LOGGER = logging.getLogger()
-
-
-class MicClient(AsyncClient):
-    async def read_event(self) -> Optional[Event]:
-        # Send 30ms of audio every 30ms
-        await asyncio.sleep(AUDIO_CHUNK.seconds)
-        return AUDIO_CHUNK.event()
-
-    async def write_event(self, event: Event) -> None:
-        # Output only
-        pass
 
 
 class WakeClient(AsyncClient):
