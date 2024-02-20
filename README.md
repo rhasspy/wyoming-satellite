@@ -138,6 +138,12 @@ You can play a WAV file when the wake word is detected (locally or remotely), an
 
 If you want to play audio files other than WAV, use [event commands](#event-commands). Specifically, the `--detection-command` to replace `--awake-wav` and `--transcript-command` to replace `--done-wav`.
 
+#### Additonal mic + awake.wav configuration:
+* `--mic-seconds-to-mute-after-awake-wav 0.5` - delay (in seconds) after awake.wav is played to trigger capture of mic audio - default=0.5
+* `--mic-mute-during-awake-wav True` - True, if there should be any delay in mic capture after awake.wav is played - default=True
+
+If you notice your audio capture is starting late, try lowering or disabling this setting.
+
 ## Audio Enhancements
 
 Install the dependencies for webrtc:
