@@ -261,6 +261,12 @@ async def main() -> None:
     parser.add_argument(
         "--log-format", default=logging.BASIC_FORMAT, help="Format for log messages"
     )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=__version__,
+        help="Print version and exit",
+    )
     args = parser.parse_args()
 
     # Validate args
