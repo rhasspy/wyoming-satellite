@@ -41,8 +41,8 @@ async def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--uri", required=True, help="unix:// or tcp://")
-    #
     parser.add_argument("--debug", action="store_true", help="Log DEBUG messages")
+    parser.add_argument("--led-brightness", type=int, default=31, help="LED brightness (integer from 1 to 31)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO)
@@ -54,7 +54,7 @@ async def main() -> None:
     led_power = gpiozero.LED(LEDS_GPIO, active_high=False)
     led_power.on()
 
-    leds = APA102(num_led=NUM_LEDS)
+    leds = APA102(num_led=NUM_LEDS, global_brightness=args.led_brightness)
 
     # Start server
     server = AsyncServer.from_uri(args.uri)
@@ -148,7 +148,7 @@ class APA102:
     def __init__(
         self,
         num_led,
-        global_brightness=MAX_BRIGHTNESS,
+        global_brightness,
         order="rgb",
         bus=0,
         device=1,
@@ -162,6 +162,7 @@ class APA102:
             self.global_brightness = self.MAX_BRIGHTNESS
         else:
             self.global_brightness = global_brightness
+        _LOGGER.debug("LED brightness: %d", self.global_brightness)
 
         self.leds = [self.LED_START, 0, 0, 0] * self.num_led  # Pixel buffer
         self.spi = spidev.SpiDev()  # Init the SPI device
