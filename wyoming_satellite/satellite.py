@@ -589,7 +589,8 @@ class SatelliteBase:
                     event.type
                 ):
                     await _disconnect()
-                    await self.trigger_played()
+                    if not hasattr(event, 'wav'):
+                        await self.trigger_played()
                     snd_client = None  # reconnect on next event
             except asyncio.CancelledError:
                 break
@@ -635,6 +636,7 @@ class SatelliteBase:
                 samples_per_chunk=self.settings.snd.samples_per_chunk,
                 volume_multiplier=self.settings.snd.volume_multiplier,
             ):
+                event.wav = True
                 await self.event_to_snd(event)
         except Exception:
             # Unmute in case of an error
