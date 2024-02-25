@@ -33,6 +33,10 @@ subprocess.check_call(
         "https://synesthesiam.github.io/prebuilt-apps/",
         "-r",
         str(_PROGRAM_DIR / "requirements.txt"),
+        "-r",
+        str(_PROGRAM_DIR / "requirements_audio_enhancement.txt"),
+        "-r",
+        str(_PROGRAM_DIR / "requirements_vad.txt"),
     ]
 )
 

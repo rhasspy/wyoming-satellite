@@ -10,7 +10,7 @@ WORKDIR /app
 
 COPY sounds/ ./sounds/
 COPY script/setup ./script/
-COPY setup.py requirements.txt MANIFEST.in ./
+COPY setup.py requirements.txt requirements_audio_enhancement.txt requirements_vad.txt MANIFEST.in ./
 COPY wyoming_satellite/ ./wyoming_satellite/
 
 RUN script/setup
