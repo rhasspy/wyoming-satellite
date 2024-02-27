@@ -305,6 +305,13 @@ python3 -m venv --system-site-packages .venv
 .venv/bin/pip3 install 'wyoming==1.5.2'
 ```
 
+In case you use a ReSpeaker USB 4mic array v2.0, additionally install pixel-ring:
+
+```sh
+.venv/bin/pip3 install 'pixel-ring'
+```
+
+
 The `--system-site-packages` argument is used to access the pre-installed `gpiozero` and `spidev` Python packages. If these are **not already installed** in your system, run:
 
 ```sh
