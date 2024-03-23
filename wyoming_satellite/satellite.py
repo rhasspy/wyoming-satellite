@@ -1144,6 +1144,8 @@ class WakeStreamingSatellite(SatelliteBase):
 
         super().__init__(settings)
         self.is_streaming = False
+        self.is_voice_active = False
+        self.vad = None
 
         # Timestamp in the future when the refractory period is over (set with
         # time.monotonic()).
@@ -1151,7 +1153,21 @@ class WakeStreamingSatellite(SatelliteBase):
         self.refractory_timestamp: Dict[Optional[str], float] = {}
 
         if settings.vad.enabled:
-            _LOGGER.warning("VAD is enabled but will not be used")
+            self.vad = SileroVad(
+                threshold=settings.vad.threshold, trigger_level=settings.vad.trigger_level
+            )
+
+            # Timestamp in the future when we will have timed out (set with
+            # time.monotonic())
+            self.vad_timeout_seconds: Optional[float] = None
+
+            # Audio from right before speech starts (circular buffer)
+            self.vad_buffer: Optional[RingBuffer] = None
+
+            if settings.vad.buffer_seconds > 0:
+                # Assume 16Khz, 16-bit mono samples
+                vad_buffer_bytes = int(math.ceil(settings.vad.buffer_seconds * 16000 * 2))
+                self.vad_buffer = RingBuffer(maxlen=vad_buffer_bytes)
 
         # Used for debug audio recording so both wake and stt WAV files have the
         # same timestamp.
@@ -1184,6 +1200,7 @@ class WakeStreamingSatellite(SatelliteBase):
             # Stop streaming before event_from_server is called because it will
             # play the "done" WAV.
             self.is_streaming = False
+            self.is_voice_active = False
 
             # Stop debug recording (stt)
             if self.stt_audio_writer is not None:
@@ -1194,6 +1211,7 @@ class WakeStreamingSatellite(SatelliteBase):
         if is_run_satellite or is_transcript or is_error or is_pause_satellite:
             # Stop streaming
             self.is_streaming = False
+            self.is_voice_active = False
 
             if is_pause_satellite:
                 self._is_paused = True
@@ -1250,9 +1268,61 @@ class WakeStreamingSatellite(SatelliteBase):
         if self.is_streaming:
             # Forward to server
             await self.event_to_server(event)
-        else:
-            # Forward to wake word service
-            await self.event_to_wake(event)
+        elif self.is_voice_active or not self.vad:
+            if (
+                self.vad and
+                (self.vad_timeout_seconds is not None)
+                and (time.monotonic() >= self.vad_timeout_seconds)
+            ):
+                # Time out during wake word recognition
+                self.is_voice_active = False
+                self.vad_timeout_seconds = None
+                _LOGGER.debug("Voice activity timed out")
+            else:
+                # Forward to wake word service
+                await self.event_to_wake(event)
+        else: # VAD is active
+            chunk: Optional[AudioChunk] = None
+            # do VAD detection
+            # Check VAD
+            if audio_bytes is None:
+                if chunk is None:
+                    # Need to unpack
+                    chunk = AudioChunk.from_event(event)
+
+                audio_bytes = chunk.audio
+
+            if not self.vad(audio_bytes):
+                # No speech
+                if self.vad_buffer is not None:
+                    self.vad_buffer.put(audio_bytes)
+            else:
+                self.is_voice_active = True
+                _LOGGER.debug("Voice activity detected")
+                if self.settings.vad.wake_word_timeout is not None:
+                    # Set future time when we'll stop streaming if the wake word
+                    # hasn't been detected.
+                    self.vad_timeout_seconds = (
+                        time.monotonic() + self.settings.vad.wake_word_timeout
+                    )
+                else:
+                    # No timeout
+                    self.vad_timeout_seconds = None
+                if self.vad_buffer is not None:
+                    # Send contents of VAD buffer first. This is the audio that was
+                    # recorded right before speech was detected.
+                    if chunk is None:
+                        chunk = AudioChunk.from_event(event)
+
+                    await self.event_to_wake(
+                        AudioChunk(
+                            rate=chunk.rate,
+                            width=chunk.width,
+                            channels=chunk.channels,
+                            audio=self.vad_buffer.getvalue(),
+                        ).event()
+                    )
+                self._reset_vad()
 
     async def event_from_wake(self, event: Event) -> None:
         if Info.is_type(event.type):
@@ -1286,6 +1356,7 @@ class WakeStreamingSatellite(SatelliteBase):
             _LOGGER.debug(detection)
 
             self.is_streaming = True
+            self.is_voice_active = False
             _LOGGER.debug("Streaming audio")
 
             if self.settings.wake.refractory_seconds is not None:
@@ -1330,3 +1401,11 @@ class WakeStreamingSatellite(SatelliteBase):
                 info.wake = self._wake_info.wake
         except asyncio.TimeoutError:
             _LOGGER.warning("Failed to get info from wake service")
+
+    def _reset_vad(self):
+        """Reset state of VAD."""
+        self.vad(None)
+
+        if self.vad_buffer is not None:
+            # Clear buffer
+            self.vad_buffer.put(bytes(self.vad_buffer.maxlen))
