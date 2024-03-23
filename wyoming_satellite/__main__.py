@@ -296,9 +296,6 @@ async def main() -> None:
         _LOGGER.fatal("%s does not exist", args.done_wav)
         sys.exit(1)
 
-    if args.vad and (args.wake_uri or args.wake_command):
-        _LOGGER.warning("VAD is not used with local wake word detection")
-
     logging.basicConfig(
         level=logging.DEBUG if args.debug else logging.INFO, format=args.log_format
     )
