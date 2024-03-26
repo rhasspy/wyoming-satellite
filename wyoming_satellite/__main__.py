@@ -178,6 +178,10 @@ async def main() -> None:
         "--detection-command", help="Command to run when wake word is detected"
     )
     parser.add_argument(
+        "--transcribe-command",
+        help="Command to run when speech to text transcribe is started",
+    )
+    parser.add_argument(
         "--transcript-command",
         help="Command to run when speech to text transcript is returned",
     )
@@ -369,6 +373,7 @@ async def main() -> None:
             detect=split_command(args.detect_command),
             detection=split_command(args.detection_command),
             played=split_command(args.tts_played_command),
+            transcribe=split_command(args.transcribe_command),
             transcript=split_command(args.transcript_command),
             stt_start=split_command(args.stt_start_command),
             stt_stop=split_command(args.stt_stop_command),
