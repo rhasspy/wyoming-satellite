@@ -6,7 +6,7 @@ This tutorial should work for almost any Raspberry Pi and USB microphone. Audio 
 
 ## Install OS
 
-Follow instructions to [install Raspberry Pi OS](https://www.raspberrypi.com/software/). Under "Choose OS", pick "Raspberry Pi OS (other)" and "Raspberry Pi OS (Legacy, **64-bit**) Lite".
+Follow instructions to [install Raspberry Pi OS](https://www.raspberrypi.com/software/). Under "Choose OS", pick "Raspberry Pi OS (other)" and "Raspberry Pi OS (**64-bit**) Lite".
 
 When asking if you'd like to apply customization settings, choose "Edit Settings" and:
 
