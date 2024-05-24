@@ -135,8 +135,11 @@ You can play a WAV file when the wake word is detected (locally or remotely), an
 
 * `--awake-wav <WAV>` - played when the wake word is detected
 * `--done-wav <WAV>` - played when the voice command is finished
+* `--timer-finished-wav <WAV>` - played when a timer is finished
 
 If you want to play audio files other than WAV, use [event commands](#event-commands). Specifically, the `--detection-command` to replace `--awake-wav` and `--transcript-command` to replace `--done-wav`.
+
+The timer finished sound can be repeated with `--timer-finished-wav-repeat <repeats> <delay>` where `<repeats>` is the number of times to repeat the WAV, and `<delay>` is the number of seconds to wait between repeats.
 
 ## Audio Enhancements
 
@@ -179,5 +182,9 @@ Satellites can respond to events from the server by running commands:
 * `--error-command` - an error was sent from the server (text on stdin)
 * `--connected-command` - satellite connected to server
 * `--disconnected-command` - satellite disconnected from server
+* `--timer-started-command` - new timer has started (json on stdin)
+* `--timer-updated-command` - timer has been paused/unpaused or has time added/removed (json on stdin)
+* `--timer-cancelled-command` - timer has been cancelled (timer id on stdin)
+* `--timer-finished-command` - timer has finished (timer id on stdin)
 
 For more advanced scenarios, use an event service (`--event-uri`). See `wyoming_satellite/example_event_client.py` for a basic client that just logs events.

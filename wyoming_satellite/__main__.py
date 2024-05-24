@@ -1,4 +1,5 @@
 """Main entry point for Wyoming satellite."""
+
 import argparse
 import asyncio
 import logging
@@ -22,6 +23,7 @@ from .settings import (
     MicSettings,
     SatelliteSettings,
     SndSettings,
+    TimerSettings,
     VadSettings,
     WakeSettings,
     WakeWordAndPipeline,
@@ -225,6 +227,23 @@ async def main() -> None:
         "--disconnected-command",
         help="Command to run when disconnected from the server",
     )
+    parser.add_argument(
+        "--timer-started-command",
+        help="Command to run when a timer starts",
+    )
+    parser.add_argument(
+        "--timer-updated-command",
+        help="Command to run when a timer is paused, resumed, or has time added or removed",
+    )
+    parser.add_argument(
+        "--timer-cancelled-command",
+        "--timer-canceled-command",
+        help="Command to run when a timer is cancelled",
+    )
+    parser.add_argument(
+        "--timer-finished-command",
+        help="Command to run when a timer finishes",
+    )
 
     # Sounds
     parser.add_argument(
@@ -232,6 +251,17 @@ async def main() -> None:
     )
     parser.add_argument(
         "--done-wav", help="WAV file to play when voice command is done"
+    )
+    parser.add_argument(
+        "--timer-finished-wav", help="WAV file to play when a timer finishes"
+    )
+    parser.add_argument(
+        "--timer-finished-wav-repeat",
+        nargs=2,
+        metavar=("repeat", "delay"),
+        type=float,
+        default=(1, 0),
+        help="Number of times to play timer finished WAV and delay between repeats in seconds",
     )
 
     # Satellite details
@@ -296,6 +326,10 @@ async def main() -> None:
         _LOGGER.fatal("%s does not exist", args.done_wav)
         sys.exit(1)
 
+    if args.timer_finished_wav and (not Path(args.timer_finished_wav).is_file()):
+        _LOGGER.fatal("%s does not exist", args.timer_finished_wav)
+        sys.exit(1)
+
     if args.vad and (args.wake_uri or args.wake_command):
         _LOGGER.warning("VAD is not used with local wake word detection")
 
@@ -347,9 +381,11 @@ async def main() -> None:
             names=[
                 WakeWordAndPipeline(*wake_name) for wake_name in args.wake_word_name
             ],
-            refractory_seconds=args.wake_refractory_seconds
-            if args.wake_refractory_seconds > 0
-            else None,
+            refractory_seconds=(
+                args.wake_refractory_seconds
+                if args.wake_refractory_seconds > 0
+                else None
+            ),
         ),
         snd=SndSettings(
             uri=args.snd_uri,
@@ -378,6 +414,15 @@ async def main() -> None:
             error=split_command(args.error_command),
             connected=split_command(args.connected_command),
             disconnected=split_command(args.disconnected_command),
+        ),
+        timer=TimerSettings(
+            started=split_command(args.timer_started_command),
+            updated=split_command(args.timer_updated_command),
+            cancelled=split_command(args.timer_cancelled_command),
+            finished=split_command(args.timer_finished_command),
+            finished_wav=args.timer_finished_wav,
+            finished_wav_plays=int(args.timer_finished_wav_repeat[0]),
+            finished_wav_delay=args.timer_finished_wav_repeat[1],
         ),
         debug_recording_dir=args.debug_recording_dir,
     )

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.0
+
+- Bump to wyoming 1.5.4 (timers)
+- Add support for voice timers
+- Add `--timer-finished-wav` and `--timer-finished-wav-repeat`
+- Add `--timer-started-command`
+- Add `--timer-updated-command`
+- Add `--timer-cancelled-command`
+- Add `--timer-finished-command`
+
 ## 1.2.0
 
 - Add `--tts-played-command`

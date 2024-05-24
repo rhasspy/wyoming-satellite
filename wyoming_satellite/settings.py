@@ -1,4 +1,5 @@
 """Satellite settings."""
+
 from abc import ABC
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -173,6 +174,32 @@ class EventSettings(ServiceSettings):
 
 
 @dataclass(frozen=True)
+class TimerSettings:
+    """Voice timer settings."""
+
+    started: Optional[List[str]] = None
+    """Command to run when a timer starts."""
+
+    updated: Optional[List[str]] = None
+    """Command to run when a timer is paused, resumed, or has time added or removed."""
+
+    cancelled: Optional[List[str]] = None
+    """Command to run when a timer is cancelled."""
+
+    finished: Optional[List[str]] = None
+    """Command to run when a timer finishes."""
+
+    finished_wav: Optional[str] = None
+    """WAV file to play when a timer finishes."""
+
+    finished_wav_plays: int = 1
+    """Number of times to play finished WAV."""
+
+    finished_wav_delay: float = 0
+    """Delay in seconds between repeats of finished WAV."""
+
+
+@dataclass(frozen=True)
 class SatelliteSettings:
     """Wyoming satellite settings."""
 
@@ -181,6 +208,7 @@ class SatelliteSettings:
     wake: WakeSettings = field(default_factory=WakeSettings)
     snd: SndSettings = field(default_factory=SndSettings)
     event: EventSettings = field(default_factory=EventSettings)
+    timer: TimerSettings = field(default_factory=TimerSettings)
 
     restart_timeout: float = 5.0
 

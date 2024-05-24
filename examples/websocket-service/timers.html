@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="Wyoming satellite timer example">
+    <meta name="author" content="Michael Hansen">
+
+    <title>Wyoming Timer Example</title>
+    <style>
+      body {
+          background-color: black;
+      }
+      
+      .timer-container {
+          display: flex;
+          flex-direction: row;
+          justify-content: center;
+          align-items: center;
+      }
+
+      .timer {
+          display: flex;
+          width: 100px;
+          height: auto;
+          flex-wrap:wrap;
+          justify-content: center;
+          align-items: center;
+          background-color: #03a9f4;
+          padding: 15px;
+          border-radius: 10px;
+          box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+          color: white;
+          margin-right: 20px
+      }
+
+      .time {
+          font-size: 20px;
+      }
+
+      .message {
+          text-align: center;
+          width: 90px;
+          font-size: 24px;
+          font-weight: bold;
+      }
+
+      .finished {
+          background-color: red;
+      }
+
+      .paused {
+          background-color: yellow;
+          color: black;
+      }
+
+      .blink {
+        animation: blink-animation 1s linear infinite;
+        -webkit-animation: blink-animation 1s linear infinite;
+      }
+      @keyframes blink-animation {
+          0%, 100% {opacity: 1;}
+          50% {opacity: 0;}
+      }
+      @-webkit-keyframes blink-animation {
+          0%, 100% {opacity: 1;}
+          50% {opacity: 0;}
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="timers" class="timer-container">
+    </div>
+    <audio id="audio-finished" hidden controls loop src="timer_finished.wav"></audio>
+
+    <script>
+      let socket = new WebSocket("ws://localhost:8675")
+      var timers = []
+      var finished_timers = 0
+
+      function q(selector) {return document.querySelector(selector)}
+
+      socket.onopen = function(e) {
+          console.log("Connected")
+      };
+
+      socket.onmessage = function(event) {
+          wyo_event = JSON.parse(event.data)
+          if (wyo_event.type == "timer-started") {
+              let timer_info = wyo_event.data
+              timer_info.is_active = true
+              console.log(timer_info)
+
+              timers.push(timer_info)
+              
+              let timers_elem = q("#timers")
+              let timer_div = document.createElement("div")
+              timer_div.id = "timer-" + timer_info.id
+              timer_div.classList.add("timer")
+
+              let message_div = document.createElement("div")
+              message_div.classList.add("message")
+
+              if (timer_info.name) {
+                  message_div.innerHTML = timer_info.name
+              } else {
+                  if (timer_info.start_hours) {
+                      message_div.innerHTML += timer_info.start_hours + " hr "
+                  }
+                  if (timer_info.start_minutes) {
+                      message_div.innerHTML += timer_info.start_minutes + " min "
+                  }
+                  if (timer_info.start_seconds) {
+                      message_div.innerHTML += timer_info.start_seconds + " sec "
+                  }
+              }
+              timer_div.appendChild(message_div)
+
+              let time_div = document.createElement("div")
+              time_div.classList.add("time")
+
+              let hours = timer_info.start_hours ?? 0
+              let minutes = timer_info.start_minutes ?? 0
+              let seconds = timer_info.start_seconds ?? 0
+
+              time_div.innerHTML =
+                  hours.toString().padStart(2, 0) + ":" +
+                  minutes.toString().padStart(2, 0) + ":" +
+                  seconds.toString().padStart(2, 0);
+
+              timer_div.appendChild(time_div)
+
+              timers_elem.appendChild(timer_div)
+
+              setTimeout(update_timer, 1000, timer_info)
+          }
+          else if (wyo_event.type == "timer-cancelled") {
+              let timer_info = wyo_event.data
+              timers = timers.filter(t => t.id != timer_info.id)
+              let timer_div = q("#timer-" + timer_info.id)
+              if (timer_div) {
+                  timer_div.remove()
+              }
+          }
+          else if (wyo_event.type == "timer-updated") {
+              let timer_info = wyo_event.data
+              for (i = 0; i < timers.length; i++) {
+                  if (timers[i].id == timer_info.id) {
+                      timers[i].is_active = timer_info.is_active
+                      timers[i].total_seconds = timer_info.total_seconds
+                      break
+                  }
+              }
+
+              let timer_div = q("#timer-" + timer_info.id)
+              if (timer_div) {
+                  if (timer_info.is_active) {
+                      timer_div.classList.remove("paused")
+                  } else {
+                      timer_div.classList.add("paused")
+                  }
+              }
+          }
+          else if (wyo_event.type == "timer-finished") {
+              let timer_info = wyo_event.data
+              for (i = 0; i < timers.length; i++) {
+                  if (timers[i].id == timer_info.id) {
+                      timers[i].total_seconds = 0
+                      finished_timers += 1
+                      if (finished_timers == 1) {
+                          q("#audio-finished").play()
+                      }
+                      break
+                  }
+              }
+              timers = timers.filter(t => t.id != timer_info.id)
+              let timer_div = q("#timer-" + timer_info.id)
+              if (timer_div) {
+                  timer_div.classList.add("finished")
+                  timer_div.classList.add("blink")
+
+                  timer_div.onclick = function() {
+                      timer_div.remove()
+                      finished_timers = Math.max(0, finished_timers - 1)
+                      if (finished_timers == 0) {
+                          let audio = q("#audio-finished")
+                          audio.pause()
+                          audio.currentTime = 0
+                      }
+                  };
+              }
+
+              let time_div = q("#timer-" + timer_info.id + " .time")
+              if (time_div) {
+                  time_div.style.opacity = 0
+              }
+          }
+      };
+
+      socket.onclose = function(event) {
+          console.log("Disconnected")
+      };
+
+      socket.onerror = function(error) {
+      };
+
+      function update_timer(timer_info) {
+          if (timer_info.total_seconds < 0) {
+              return
+          }
+
+          let time_div = q("#timer-" + timer_info.id + " .time")
+          if (!time_div) {
+              return
+          }
+          
+          if (!timer_info.is_active) {
+              // Paused
+              setTimeout(update_timer, 1000, timer_info)
+              return
+          }
+          
+          if (timer_info.total_seconds > 0) {
+              timer_info.total_seconds -= 1
+          }
+          let total_minutes = Math.floor(timer_info.total_seconds / 60)
+          
+          let hours = Math.floor(total_minutes / 60)
+          let minutes = total_minutes % 60
+          let seconds = timer_info.total_seconds % 60
+
+          time_div.innerHTML =
+              hours.toString().padStart(2, 0) + ":" +
+              minutes.toString().padStart(2, 0) + ":" +
+              seconds.toString().padStart(2, 0)
+
+          setTimeout(update_timer, 1000, timer_info)
+      };
+    </script>
+  </body>
+</html>

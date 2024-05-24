@@ -1,23 +1,31 @@
 """Miscellaneous utilities."""
 import argparse
 import asyncio
+import json
 import logging
 import re
 import shlex
 import unicodedata
 import uuid
 from functools import lru_cache
-from typing import List, Optional
+from typing import List, Optional, Union
+
+from wyoming.event import Eventable
 
 _LOGGER = logging.getLogger()
 
 
 async def run_event_command(
-    command: Optional[List[str]], command_input: Optional[str] = None
+    command: Optional[List[str]], command_input: Optional[Union[str, Eventable]] = None
 ) -> None:
     """Run a custom event command with optional input."""
     if not command:
         return
+
+    if isinstance(command_input, Eventable):
+        # Convert event to JSON
+        event_dict = command_input.event().to_dict()
+        command_input = json.dumps(event_dict, ensure_ascii=False)
 
     _LOGGER.debug("Running %s", command)
     program, *program_args = command

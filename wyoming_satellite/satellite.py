@@ -28,6 +28,7 @@ from wyoming.satellite import (
     StreamingStopped,
 )
 from wyoming.snd import Played, SndProcessAsyncClient
+from wyoming.timer import TimerCancelled, TimerFinished, TimerStarted, TimerUpdated
 from wyoming.tts import Synthesize
 from wyoming.vad import VoiceStarted, VoiceStopped
 from wyoming.wake import Detect, Detection, WakeProcessAsyncClient
@@ -242,6 +243,8 @@ class SatelliteBase:
 
     async def event_from_server(self, event: Event) -> None:
         """Called when an event is received from the server."""
+        forward_event = True
+
         if Ping.is_type(event.type):
             # Respond with pong
             ping = Ping.from_event(event)
@@ -251,12 +254,16 @@ class SatelliteBase:
                 # Enable pinging
                 self._enable_ping()
                 _LOGGER.debug("Ping enabled")
+
+            forward_event = False
         elif Pong.is_type(event.type):
             # Response from our ping
             self._pong_received_event.set()
+            forward_event = False
         elif AudioChunk.is_type(event.type):
             # TTS audio
             await self.event_to_snd(event)
+            forward_event = False
         elif AudioStart.is_type(event.type):
             # TTS started
             await self.event_to_snd(event)
@@ -289,9 +296,21 @@ class SatelliteBase:
         elif Error.is_type(event.type):
             _LOGGER.warning(event)
             await self.trigger_error(Error.from_event(event))
+        elif TimerStarted.is_type(event.type):
+            _LOGGER.debug(event)
+            await self.trigger_timer_started(TimerStarted.from_event(event))
+        elif TimerUpdated.is_type(event.type):
+            _LOGGER.debug(event)
+            await self.trigger_timer_updated(TimerUpdated.from_event(event))
+        elif TimerCancelled.is_type(event.type):
+            _LOGGER.debug(event)
+            await self.trigger_timer_cancelled(TimerCancelled.from_event(event))
+        elif TimerFinished.is_type(event.type):
+            _LOGGER.debug(event)
+            await self.trigger_timer_finished(TimerFinished.from_event(event))
 
-        # Forward everything except audio to event service
-        if not AudioChunk.is_type(event.type):
+        # Forward everything except audio/ping/pong to event service
+        if forward_event:
             await self.forward_event(event)
 
     async def _send_run_pipeline(self, pipeline_name: Optional[str] = None) -> None:
@@ -851,6 +870,28 @@ class SatelliteBase:
     async def trigger_error(self, error: Error) -> None:
         """Called when an error occurs on the server."""
         await run_event_command(self.settings.event.error, error.text)
+
+    async def trigger_timer_started(self, timer_started: TimerStarted) -> None:
+        """Called when timer-started event is received."""
+        await run_event_command(self.settings.timer.started, timer_started)
+
+    async def trigger_timer_updated(self, timer_updated: TimerUpdated) -> None:
+        """Called when timer-updated event is received."""
+        await run_event_command(self.settings.timer.updated, timer_updated)
+
+    async def trigger_timer_cancelled(self, timer_cancelled: TimerCancelled) -> None:
+        """Called when timer-cancelled event is received."""
+        await run_event_command(self.settings.timer.cancelled, timer_cancelled.id)
+
+    async def trigger_timer_finished(self, timer_finished: TimerFinished) -> None:
+        """Called when timer-finished event is received."""
+        await run_event_command(self.settings.timer.finished, timer_finished.id)
+        for _ in range(self.settings.timer.finished_wav_plays):
+            await self._play_wav(
+                self.settings.timer.finished_wav,
+                mute_microphone=self.settings.mic.mute_during_awake_wav,
+            )
+            await asyncio.sleep(self.settings.timer.finished_wav_delay)
 
     async def forward_event(self, event: Event) -> None:
         """Forward an event to the event service."""
