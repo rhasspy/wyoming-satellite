@@ -6,6 +6,14 @@
 
 set -eo pipefail
 
+kernel_formatted="$(uname -r | cut -f1,2 -d.)"
+driver_url_status="$(curl -ILs https://github.com/HinTak/seeed-voicecard/archive/refs/heads/v$kernel_formatted.tar.gz | tac | grep -o "^HTTP.*" | cut -f 2 -d' ' | head -1)"
+
+if  [ ! "$driver_url_status" = 200 ]; then
+echo "Could not find driver for kernel $kernel_formatted"
+exit 1
+fi
+
 apt-get update
 apt-get install --no-install-recommends --yes \
     curl raspberrypi-kernel-headers dkms i2c-tools libasound2-plugins alsa-utils
@@ -22,12 +30,11 @@ pushd "${temp_dir}"
 
 # Download source code to temporary directory
 # NOTE: There are different branches in the repo for different kernel versions.
-# We use v6.1 here.
 echo 'Downloading source code'
-curl -L -o - 'https://github.com/HinTak/seeed-voicecard/archive/refs/heads/v6.1.tar.gz' | \
+curl -L -o - "https://github.com/HinTak/seeed-voicecard/archive/refs/heads/v$kernel_formatted.tar.gz" | \
     tar -xzf -
 
-cd seeed-voicecard-6.1/
+cd seeed-voicecard-"$kernel_formatted"/
 
 # 1. Build kernel module
 echo 'Building kernel module'
