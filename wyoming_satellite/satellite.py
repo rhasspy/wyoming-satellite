@@ -243,6 +243,8 @@ class SatelliteBase:
 
     async def event_from_server(self, event: Event) -> None:
         """Called when an event is received from the server."""
+        forward_event = True
+
         if Ping.is_type(event.type):
             # Respond with pong
             ping = Ping.from_event(event)
@@ -252,12 +254,16 @@ class SatelliteBase:
                 # Enable pinging
                 self._enable_ping()
                 _LOGGER.debug("Ping enabled")
+
+            forward_event = False
         elif Pong.is_type(event.type):
             # Response from our ping
             self._pong_received_event.set()
+            forward_event = False
         elif AudioChunk.is_type(event.type):
             # TTS audio
             await self.event_to_snd(event)
+            forward_event = False
         elif AudioStart.is_type(event.type):
             # TTS started
             await self.event_to_snd(event)
@@ -303,8 +309,8 @@ class SatelliteBase:
             _LOGGER.debug(event)
             await self.trigger_timer_finished(TimerFinished.from_event(event))
 
-        # Forward everything except audio to event service
-        if not AudioChunk.is_type(event.type):
+        # Forward everything except audio/ping/pong to event service
+        if forward_event:
             await self.forward_event(event)
 
     async def _send_run_pipeline(self, pipeline_name: Optional[str] = None) -> None:

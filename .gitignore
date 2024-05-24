@@ -9,7 +9,7 @@ tmp/
 build
 htmlcov
 
-/.venv/
+.venv/
 .mypy_cache/
 __pycache__/
 
