@@ -386,3 +386,55 @@ journalctl -u 2mic_leds.service -f
 ```
 
 Make sure to run `sudo systemctl daemon-reload` every time you make changes to the service.
+
+## Implementing Custom Wake Words
+
+Go to [This Google Colab](https://colab.research.google.com/drive/1q1oe2zOyZp7UsB3jJiQ1IFn8z5YfjwEb?usp=sharing#scrollTo=1cbqBebHXjFD) and follow the steps to train your own wakeword. (This process could take up to an hour) 
+
+You will be prompted to download two files after the scripts are done running, YOUR_WAKE_WORD.tflite and YOUR_WAKE_WORD.onnx.
+
+To match the rest of the models in `/home/pi/wyoming-openwakeword/wyoming_openwakeword/models/`, rename the .tflite file and add "_v0.1.tflite"
+
+Example: 
+
+comet.tflite --> comet_v0.1.tflite
+
+Now we need to copy the .tflite file from your specified download path to your pi:
+
+``` sh
+scp /path/to/Wake_Word.tflite pi@<your_pi_ip_address>:/home/pi/wyoming-openwakeword/wyoming_openwakeword/models/
+```
+Update the satellite service:
+
+``` sh
+sudo systemctl edit --force --full wyoming-satellite.service
+```
+Replace the wake word with your new word:
+
+```text
+[Unit]
+...
+Requires=wyoming-openwakeword.service
+
+[Service]
+...
+ExecStart=/home/pi/wyoming-satellite/script/run ... --wake-uri 'tcp://127.0.0.1:10400' --wake-word-name 'comet'
+...
+
+[Install]
+...
+```
+
+Restart the wake word and satellite services:
+
+``` sh
+sudo systemctl restart wyoming-openwakeword.service
+sudo systemctl restart wyoming-satellite.service
+```
+
+Check the logs for any errors and ensure the wake word is being used:
+
+``` sh
+journalctl -u wyoming-openwakeword.service
+journalctl -u wyoming-satellite.service
+```
