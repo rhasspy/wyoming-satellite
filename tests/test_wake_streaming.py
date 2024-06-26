@@ -45,8 +45,8 @@ class EventClient(AsyncClient):
         self.wake_event = asyncio.Event()
 
     async def read_event(self) -> Optional[Event]:
-        # Input only
-        return None
+        # Sends a detection event
+        return Detection().event()
 
     async def write_event(self, event: Event) -> None:
         if Detection.is_type(event.type):
