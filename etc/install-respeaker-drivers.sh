@@ -46,7 +46,7 @@ marker='0.0.0'
 threads="$(getconf _NPROCESSORS_ONLN)"
 memory="$(LANG=C free -m|awk '/^Mem:/{print $2}')"
 
-if  [ "$memory" -le 512 ] && [ "$threads" -gt 2 ]; then
+if  [ "${memory}" -le 512 ] && [ "${threads}" -gt 2 ]; then
 threads=2
 fi
 
