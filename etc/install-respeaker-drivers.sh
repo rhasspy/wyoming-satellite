@@ -43,12 +43,18 @@ mod='seeed-voicecard'
 src='./'
 kernel="$(uname -r)"
 marker='0.0.0'
+threads="$(getconf _NPROCESSORS_ONLN)"
+memory="$(LANG=C free -m|awk '/^Mem:/{print $2}')"
+
+if  [ "${memory}" -le 512 ] && [ "${threads}" -gt 2 ]; then
+threads=2
+fi
 
 mkdir -p "/usr/src/${mod}-${ver}"
 cp -a "${src}"/* "/usr/src/${mod}-${ver}/"
 
 dkms add -m "${mod}" -v "${ver}"
-dkms build -k "${kernel}" -m "${mod}" -v "${ver}" && {
+dkms build -k "${kernel}" -m "${mod}" -v "${ver}" -j "${threads}" && {
     dkms install --force -k "${kernel}" -m "${mod}" -v "${ver}"
 }
 
