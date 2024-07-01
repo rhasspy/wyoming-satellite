@@ -42,7 +42,13 @@ async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--uri", required=True, help="unix:// or tcp://")
     parser.add_argument("--debug", action="store_true", help="Log DEBUG messages")
-    parser.add_argument("--led-brightness", type=int, default=31, help="LED brightness (integer from 1 to 31)")
+    parser.add_argument(
+        "--led-brightness",
+        type=int,
+        choices=range(1, 32),
+        default=31,
+        help="LED brightness (integer from 1 to 31)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.DEBUG if args.debug else logging.INFO)
