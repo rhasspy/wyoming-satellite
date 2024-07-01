@@ -308,14 +308,14 @@ async def main() -> None:
         try:
             import webrtc_noise_gain  # noqa: F401
         except ImportError:
-            _LOGGER.fatal("Install extras for webrtc")
+            _LOGGER.exception("Extras for webrtc are not installed")
             sys.exit(1)
 
     if needs_silero(args):
         try:
             import pysilero_vad  # noqa: F401
         except ImportError:
-            _LOGGER.fatal("Install extras for silerovad")
+            _LOGGER.exception("Extras for silerovad are not installed")
             sys.exit(1)
 
     if args.awake_wav and (not Path(args.awake_wav).is_file()):
