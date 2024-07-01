@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+import sys
+import subprocess
+import venv
+from pathlib import Path
+
+_DIR = Path(__file__).parent
+_PROGRAM_DIR = _DIR.parent
+_VENV_DIR = _PROGRAM_DIR / ".venv"
+
+context = venv.EnvBuilder().ensure_directories(_VENV_DIR)
+subprocess.check_call(
+    [context.env_exe, str(_PROGRAM_DIR / "examples" / "usbmic_service.py")]
+    + sys.argv[1:]
+)
