@@ -4,7 +4,7 @@ Create a voice satellite using a Raspberry Pi 3+ and USB microphone and speakers
 
 ## Install OS
 
-Follow instructions to [install Raspberry Pi OS](https://www.raspberrypi.com/software/). Under "Choose OS", pick "Raspberry Pi OS (other)" and "Raspberry Pi OS (Legacy, **64-bit**) Lite".
+Follow instructions to [install Raspberry Pi OS](https://www.raspberrypi.com/software/). Under "Choose OS", pick "Raspberry Pi OS (other)" and "Raspberry Pi OS (**64-bit**) Lite".
 
 When asking if you'd like to apply customization settings, choose "Edit Settings" and:
 
