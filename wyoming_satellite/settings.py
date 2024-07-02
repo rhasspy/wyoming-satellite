@@ -162,6 +162,7 @@ class EventSettings(ServiceSettings):
     detect: Optional[List[str]] = None
     detection: Optional[List[str]] = None
     played: Optional[List[str]] = None
+    transcribe: Optional[List[str]] = None
     transcript: Optional[List[str]] = None
     stt_start: Optional[List[str]] = None
     stt_stop: Optional[List[str]] = None
