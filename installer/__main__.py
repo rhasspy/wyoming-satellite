@@ -17,7 +17,7 @@ from .speakers import configure_speakers
 from .wake_word import configure_wake_word
 from .whiptail import ItemType, error, menu, msgbox, passwordbox, run_with_gauge
 
-_LOGGER = logging.getLogger()
+_LOGGER = logging.getLogger(__name__)
 
 
 def main() -> None:

@@ -30,7 +30,7 @@ from .shared import (
     MicClient,
 )
 
-_LOGGER = logging.getLogger()
+_LOGGER = logging.getLogger(__name__)
 
 TIMEOUT: Final = 1
 

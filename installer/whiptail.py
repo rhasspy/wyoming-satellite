@@ -11,7 +11,7 @@ from .const import HEIGHT, LIST_HEIGHT, TITLE, WIDTH
 
 ItemType = Union[str, Tuple[Any, str]]
 
-_LOGGER = logging.getLogger()
+_LOGGER = logging.getLogger(__name__)
 
 
 def whiptail(*args) -> Optional[str]:

@@ -105,18 +105,10 @@ class SndSettings(ServiceSettings):
 
 
 @dataclass(frozen=True)
-class WakeWordAndPipeline:
-    """Wake word name + optional pipeline name."""
-
-    name: str
-    pipeline: Optional[str] = None
-
-
-@dataclass(frozen=True)
 class WakeSettings(ServiceSettings):
     """Wake word service settings."""
 
-    names: Optional[List[WakeWordAndPipeline]] = None
+    names: Optional[List[str]] = None
     """List of wake word names to listen for."""
 
     rate: int = 16000
@@ -150,6 +142,9 @@ class VadSettings:
 
     wake_word_timeout: Optional[float] = 5.0
     """Seconds before going back to sleep if wake word is not detected."""
+
+    finished_speaking_seconds: float = 0.8
+    """Seconds to wait after speech before voice command is finished."""
 
 
 @dataclass(frozen=True)

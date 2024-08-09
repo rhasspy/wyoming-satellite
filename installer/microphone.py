@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 from .const import RECORD_RMS_MIN, RECORD_SECONDS, Settings
 from .whiptail import gauge, inputbox, menu, msgbox, radiolist
 
-_LOGGER = logging.getLogger()
+_LOGGER = logging.getLogger(__name__)
 
 
 def configure_microphone(settings: Settings) -> None:

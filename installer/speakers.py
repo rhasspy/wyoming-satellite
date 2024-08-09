@@ -6,7 +6,7 @@ from typing import List, Optional
 from .const import PROGRAM_DIR, Settings
 from .whiptail import checklist, inputbox, menu, msgbox, radiolist
 
-_LOGGER = logging.getLogger()
+_LOGGER = logging.getLogger(__name__)
 
 
 def configure_speakers(settings: Settings) -> None:

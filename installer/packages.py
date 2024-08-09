@@ -5,7 +5,7 @@ import subprocess
 from .const import PROGRAM_DIR
 from .whiptail import run_with_gauge
 
-_LOGGER = logging.getLogger()
+_LOGGER = logging.getLogger(__name__)
 
 
 def packages_installed(*packages) -> bool:

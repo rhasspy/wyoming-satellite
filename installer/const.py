@@ -9,7 +9,7 @@ from typing import List, Optional
 from .dataclasses_json import DataClassJsonMixin
 
 _DIR = Path(__file__).parent
-_LOGGER = logging.getLogger()
+_LOGGER = logging.getLogger(__name__)
 
 PROGRAM_DIR = _DIR.parent
 LOCAL_DIR = PROGRAM_DIR / "local"

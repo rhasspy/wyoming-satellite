@@ -1,4 +1,5 @@
 """Satellite code."""
+
 import array
 import asyncio
 import logging
@@ -8,11 +9,12 @@ import wave
 from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
+from queue import Queue
 from typing import Callable, Dict, Final, List, Optional, Set, Union
 
 from pyring_buffer import RingBuffer
 from wyoming.asr import Transcript
-from wyoming.audio import AudioChunk, AudioFormat, AudioStart, AudioStop
+from wyoming.audio import AudioChunk, AudioStart, AudioStop
 from wyoming.client import AsyncClient
 from wyoming.error import Error
 from wyoming.event import Event, async_write_event
@@ -42,10 +44,10 @@ from .utils import (
     run_event_command,
     wav_to_events,
 )
-from .vad import SileroVad
+from .vad import SileroVad, VoiceCommandSegmenter
 from .webrtc import WebRtcAudio
 
-_LOGGER = logging.getLogger()
+_LOGGER = logging.getLogger(__name__)
 
 _PONG_TIMEOUT: Final = 5
 _PING_SEND_DELAY: Final = 2
@@ -108,6 +110,11 @@ class SatelliteBase:
             self.stt_audio_writer = DebugAudioWriter(
                 settings.debug_recording_dir, "stt"
             )
+
+        # Names of wake words to listen for
+        self._wake_names: Optional[List[str]] = None
+        if self.settings.wake.names:
+            self._wake_names = self.settings.wake.names
 
     @property
     def is_running(self) -> bool:
@@ -279,13 +286,6 @@ class SatelliteBase:
             # TTS stopped
             await self.event_to_snd(event)
             await self.trigger_tts_stop()
-        elif Detect.is_type(event.type):
-            # Wake word detection started
-            await self.trigger_detect()
-        elif Detection.is_type(event.type):
-            # Wake word detected
-            _LOGGER.debug("Wake word detected")
-            await self.trigger_detection(Detection.from_event(event))
         elif VoiceStarted.is_type(event.type):
             # STT start
             await self.trigger_stt_start()
@@ -320,34 +320,38 @@ class SatelliteBase:
         if forward_event:
             await self.forward_event(event)
 
-    async def _send_run_pipeline(self, pipeline_name: Optional[str] = None) -> None:
+    async def _send_run_pipeline(
+        self,
+        start_stage: Optional[PipelineStage] = None,
+        end_stage: Optional[PipelineStage] = None,
+        wake_word_name: Optional[str] = None,
+    ) -> None:
         """Sends a RunPipeline event with the correct stages."""
-        if self.settings.wake.enabled:
-            # Local wake word detection
-            start_stage = PipelineStage.ASR
-            restart_on_end = False
-        else:
-            # Remote wake word detection
-            start_stage = PipelineStage.WAKE
-            restart_on_end = not self.settings.vad.enabled
+        restart_on_end = False
 
-        if self.settings.snd.enabled:
-            # Play TTS response
-            end_stage = PipelineStage.TTS
-        else:
-            # No audio output
-            end_stage = PipelineStage.HANDLE
+        if start_stage is None:
+            if self.settings.wake.enabled:
+                # Local wake word detection
+                start_stage = PipelineStage.ASR
+                restart_on_end = False
+            else:
+                # Remote wake word detection
+                start_stage = PipelineStage.WAKE
+                restart_on_end = not self.settings.vad.enabled
+
+        if end_stage is None:
+            if self.settings.snd.enabled:
+                # Play TTS response
+                end_stage = PipelineStage.TTS
+            else:
+                # No audio output
+                end_stage = PipelineStage.HANDLE
 
         run_pipeline = RunPipeline(
             start_stage=start_stage,
             end_stage=end_stage,
-            name=pipeline_name,
+            wake_word_name=wake_word_name,
             restart_on_end=restart_on_end,
-            snd_format=AudioFormat(
-                rate=self.settings.snd.rate,
-                width=self.settings.snd.width,
-                channels=self.settings.snd.channels,
-            ),
         ).event()
         _LOGGER.debug(run_pipeline)
         await self.event_to_server(run_pipeline)
@@ -476,7 +480,10 @@ class SatelliteBase:
                     mic_client = self._make_mic_client()
                     assert mic_client is not None
                     await mic_client.connect()
-                    _LOGGER.debug("Connected to mic service")
+                    _LOGGER.info(
+                        "Connected to mic service: %s",
+                        self.settings.mic.uri or self.settings.mic.command,
+                    )
 
                 event = await mic_client.read_event()
                 if event is None:
@@ -514,9 +521,11 @@ class SatelliteBase:
                     event = AudioChunk(
                         rate=chunk.rate,
                         width=chunk.width,
-                        channels=chunk.channels
-                        if (self.settings.mic.channel_index is None)
-                        else 1,
+                        channels=(
+                            chunk.channels
+                            if (self.settings.mic.channel_index is None)
+                            else 1
+                        ),
                         audio=audio_bytes,
                     ).event()
                 else:
@@ -595,7 +604,10 @@ class SatelliteBase:
                     snd_client = self._make_snd_client()
                     assert snd_client is not None
                     await snd_client.connect()
-                    _LOGGER.debug("Connected to snd service")
+                    _LOGGER.info(
+                        "Connected to snd service: %s",
+                        self.settings.snd.uri or self.settings.snd.command,
+                    )
 
                 # Audio processing
                 if self.settings.snd.needs_processing and AudioChunk.is_type(
@@ -618,6 +630,8 @@ class SatelliteBase:
                     await _disconnect()
                     if snd_event.is_tts:
                         await self.trigger_played()
+                        await self.event_to_server(Played().event())
+
                     snd_client = None  # reconnect on next event
             except asyncio.CancelledError:
                 break
@@ -736,7 +750,10 @@ class SatelliteBase:
                     wake_client = self._make_wake_client()
                     assert wake_client is not None
                     await wake_client.connect()
-                    _LOGGER.debug("Connected to wake service")
+                    _LOGGER.info(
+                        "Connected to wake service: %s",
+                        self.settings.wake.uri or self.settings.wake.command,
+                    )
 
                     # Reset
                     from_client_task = None
@@ -800,11 +817,7 @@ class SatelliteBase:
 
     async def _send_wake_detect(self) -> None:
         """Inform wake word service of which wake words to detect."""
-        wake_names: Optional[List[str]] = None
-        if self.settings.wake.names:
-            wake_names = [w.name for w in self.settings.wake.names]
-
-        await self.event_to_wake(Detect(names=wake_names).event())
+        await self.event_to_wake(Detect(names=self._wake_names).event())
         await self.trigger_detect()
 
     # -------------------------------------------------------------------------
@@ -935,7 +948,10 @@ class SatelliteBase:
                     event_client = self._make_event_client()
                     assert event_client is not None
                     await event_client.connect()
-                    _LOGGER.debug("Connected to event service")
+                    _LOGGER.info(
+                        "Connected to event service: %s",
+                        self.settings.event.uri or self.settings.event.command,
+                    )
 
                 await event_client.write_event(event)
             except asyncio.CancelledError:
@@ -984,10 +1000,17 @@ class AlwaysStreamingSatellite(SatelliteBase):
         elif PauseSatellite.is_type(event.type):
             self.is_streaming = False
             _LOGGER.info("Satellite paused")
+        elif Detect.is_type(event.type):
+            # Wake word detection started
+            await self.trigger_detect()
         elif Detection.is_type(event.type):
             # Start debug recording
             if self.stt_audio_writer is not None:
                 self.stt_audio_writer.start()
+
+            # Wake word detected
+            _LOGGER.debug("Wake word detected")
+            await self.trigger_detection(Detection.from_event(event))
         elif Transcript.is_type(event.type) or Error.is_type(event.type):
             # Stop debug recording
             if self.stt_audio_writer is not None:
@@ -1059,10 +1082,16 @@ class VadStreamingSatellite(SatelliteBase):
         if RunSatellite.is_type(event.type):
             self._is_paused = False
             _LOGGER.info("Waiting for speech")
+        elif Detect.is_type(event.type):
+            # Wake word detection started
+            await self.trigger_detect()
         elif Detection.is_type(event.type):
             # Start debug recording
             if self.stt_audio_writer is not None:
                 self.stt_audio_writer.start()
+
+            _LOGGER.debug("Wake word detected")
+            await self.trigger_detection(Detection.from_event(event))
         elif (
             Transcript.is_type(event.type)
             or Error.is_type(event.type)
@@ -1199,8 +1228,17 @@ class WakeStreamingSatellite(SatelliteBase):
         # wake word id -> seconds
         self.refractory_timestamp: Dict[Optional[str], float] = {}
 
+        # Local VAD for detecting the end of a voice command.
+        # If this is disabled, the server is expected to do it remotely.
+        self.vad: Optional[SileroVad] = None
         if settings.vad.enabled:
-            _LOGGER.warning("VAD is enabled but will not be used")
+            _LOGGER.debug("Loading VAD model")
+            self.vad = SileroVad(threshold=settings.vad.threshold, trigger_level=1)
+            _LOGGER.info("Loaded VAD model")
+
+        self.segmenter = VoiceCommandSegmenter(
+            silence_seconds=settings.vad.finished_speaking_seconds
+        )
 
         # Used for debug audio recording so both wake and stt WAV files have the
         # same timestamp.
@@ -1210,6 +1248,9 @@ class WakeStreamingSatellite(SatelliteBase):
 
         self._wake_info: Optional[Info] = None
         self._wake_info_ready = asyncio.Event()
+
+        self._run_pipeline_queue: Queue[RunPipeline] = Queue()
+        self._next_run_pipeline: Optional[RunPipeline] = None
 
     async def event_from_server(self, event: Event) -> None:
         # Only check event types once
@@ -1221,13 +1262,42 @@ class WakeStreamingSatellite(SatelliteBase):
         if RunSatellite.is_type(event.type):
             is_run_satellite = True
             self._is_paused = False
-
         elif PauseSatellite.is_type(event.type):
             is_pause_satellite = True
+        elif Detect.is_type(event.type):
+            # Request to change active wake words
+            detect = Detect.from_event(event)
+            self._wake_names = detect.names
+
+            if not self.is_streaming:
+                await self._send_wake_detect()
+
+            _LOGGER.debug("Updated wake word names: %s", self._wake_names)
         elif Transcript.is_type(event.type):
             is_transcript = True
+            if (self._next_run_pipeline is not None) and (
+                self._next_run_pipeline.end_stage == PipelineStage.ASR
+            ):
+                # Done with remotely triggered pipeline
+                self._next_run_pipeline = None
         elif Error.is_type(event.type):
             is_error = True
+        elif RunPipeline.is_type(event.type):
+            run_pipeline = RunPipeline.from_event(event)
+            if not self.is_streaming:
+                # Run right now
+                self._next_run_pipeline = run_pipeline
+                await self._trigger_pipeline(run_pipeline)
+                return
+
+            # Run after streaming is finished
+            self._run_pipeline_queue.put(run_pipeline)
+        elif AudioStop.is_type(event.type):
+            if (self._next_run_pipeline is not None) and (
+                self._next_run_pipeline.end_stage == PipelineStage.TTS
+            ):
+                # Done with remotely triggered pipeline
+                self._next_run_pipeline = None
 
         if is_transcript or is_pause_satellite:
             # Stop streaming before event_from_server is called because it will
@@ -1248,20 +1318,20 @@ class WakeStreamingSatellite(SatelliteBase):
                 self._is_paused = True
                 _LOGGER.debug("Satellite is paused")
             else:
-                # Go back to wake word detection
+                # Go back to wake word detection or run next pipeline
                 await self.trigger_streaming_stop()
 
                 # It's possible to be paused in the middle of streaming
-                if not self._is_paused:
-                    await self._send_wake_detect()
-                    _LOGGER.info("Waiting for wake word")
+                if self._is_paused:
+                    return
 
-                    # Start debug recording (wake)
-                    self._debug_recording_timestamp = time.monotonic_ns()
-                    if self.wake_audio_writer is not None:
-                        self.wake_audio_writer.start(
-                            timestamp=self._debug_recording_timestamp
-                        )
+                if self._run_pipeline_queue.empty():
+                    # Back to wake word detection
+                    await self._start_wake_word_detection()
+                else:
+                    # Next run from queue
+                    self._next_run_pipeline = self._run_pipeline_queue.get()
+                    await self._trigger_pipeline(self._next_run_pipeline)
 
     async def trigger_server_disonnected(self) -> None:
         await super().trigger_server_disonnected()
@@ -1297,13 +1367,26 @@ class WakeStreamingSatellite(SatelliteBase):
                 self.stt_audio_writer.write(audio_bytes)
 
         if self.is_streaming:
+            if self.vad is not None:
+                if audio_bytes is None:
+                    chunk = AudioChunk.from_event(event)
+                    audio_bytes = chunk.audio
+
+                is_speech = self.vad(audio_bytes)
+                chunk_seconds = (len(audio_bytes) // 2) / 16000
+                if not self.segmenter.process(chunk_seconds, is_speech):
+                    # Send empty audio chunk to indicate command is done
+                    event = AudioChunk(
+                        rate=16000, width=2, channels=1, audio=bytes()
+                    ).event()
+
             # Forward to server
             await self.event_to_server(event)
         else:
             # Forward to wake word service
             await self.event_to_wake(event)
 
-    async def event_from_wake(self, event: Event) -> None:
+    async def event_from_wake(self, event: Event, is_fake: bool = False) -> None:
         if Info.is_type(event.type):
             self._wake_info = Info.from_event(event)
             self._wake_info_ready.set()
@@ -1313,53 +1396,85 @@ class WakeStreamingSatellite(SatelliteBase):
             # Not detecting or no server connected
             return
 
-        if Detection.is_type(event.type):
-            detection = Detection.from_event(event)
+        if not Detection.is_type(event.type):
+            return
 
-            # Check refractory period to avoid multiple back-to-back detections
-            refractory_timestamp = self.refractory_timestamp.get(detection.name)
-            if (refractory_timestamp is not None) and (
-                refractory_timestamp > time.monotonic()
+        detection = Detection.from_event(event)
+
+        if (self._next_run_pipeline is not None) and (
+            self._next_run_pipeline.end_stage == PipelineStage.WAKE
+        ):
+            # Remote pipeline was triggered with only wake word detection
+            wake_word_name: Optional[str] = None
+            if detection.name:
+                wake_word_name = normalize_wake_word(detection.name)
+
+            if (not self._next_run_pipeline.wake_word_names) or (
+                wake_word_name in self._next_run_pipeline.wake_word_names
             ):
-                _LOGGER.debug("Wake word detection occurred during refractory period")
-                return
-
-            # Stop debug recording (wake)
-            if self.wake_audio_writer is not None:
-                self.wake_audio_writer.stop()
-
-            # Start debug recording (stt)
-            if self.stt_audio_writer is not None:
-                self.stt_audio_writer.start(timestamp=self._debug_recording_timestamp)
-
-            _LOGGER.debug(detection)
-
-            self.is_streaming = True
-            _LOGGER.debug("Streaming audio")
-
-            if self.settings.wake.refractory_seconds is not None:
-                # Another detection may not occur for this wake word until
-                # refractory period is over.
-                self.refractory_timestamp[detection.name] = (
-                    time.monotonic() + self.settings.wake.refractory_seconds
-                )
+                self._next_run_pipeline = None
+                await self.event_to_server(event)
+                await self._send_wake_detect()
+                _LOGGER.info("Waiting for wake word")
             else:
-                # No refractory period
-                self.refractory_timestamp.pop(detection.name, None)
+                _LOGGER.debug(
+                    "Got %s but listening for %s",
+                    wake_word_name,
+                    self._next_run_pipeline.wake_word_names,
+                )
+            return
 
+        # Check refractory period to avoid multiple back-to-back detections
+        refractory_timestamp = self.refractory_timestamp.get(detection.name)
+        if (refractory_timestamp is not None) and (
+            refractory_timestamp > time.monotonic()
+        ):
+            _LOGGER.debug("Wake word detection occurred during refractory period")
+            return
+
+        # Stop debug recording (wake)
+        if self.wake_audio_writer is not None:
+            self.wake_audio_writer.stop()
+
+        # Start debug recording (stt)
+        if self.stt_audio_writer is not None:
+            self.stt_audio_writer.start(timestamp=self._debug_recording_timestamp)
+
+        _LOGGER.debug(detection)
+
+        self.segmenter.reset()
+        self.is_streaming = True
+        _LOGGER.debug("Streaming audio")
+
+        if (not is_fake) and (self.settings.wake.refractory_seconds is not None):
+            # Another detection may not occur for this wake word until
+            # refractory period is over.
+            self.refractory_timestamp[detection.name] = (
+                time.monotonic() + self.settings.wake.refractory_seconds
+            )
+        else:
+            # No refractory period
+            self.refractory_timestamp.pop(detection.name, None)
+
+        if not is_fake:
             # Forward to the server
             await self.event_to_server(event)
 
-            # Match detected wake word name with pipeline name
-            pipeline_name: Optional[str] = None
-            if self.settings.wake.names:
-                detection_name = normalize_wake_word(detection.name)
-                for wake_name in self.settings.wake.names:
-                    if normalize_wake_word(wake_name.name) == detection_name:
-                        pipeline_name = wake_name.pipeline
-                        break
+        start_stage: Optional[PipelineStage] = None
+        end_stage: Optional[PipelineStage] = None
 
-            await self._send_run_pipeline(pipeline_name=pipeline_name)
+        if self._next_run_pipeline is not None:
+            # Remote pipeline has been triggered
+            start_stage = self._next_run_pipeline.start_stage
+            end_stage = self._next_run_pipeline.end_stage
+
+        await self._send_run_pipeline(
+            start_stage=start_stage,
+            end_stage=end_stage,
+            wake_word_name=detection.name,
+        )
+
+        if not is_fake:
             await self.forward_event(event)  # forward to event service
             await self.trigger_detection(Detection.from_event(event))
             await self.trigger_streaming_start()
@@ -1379,3 +1494,34 @@ class WakeStreamingSatellite(SatelliteBase):
                 info.wake = self._wake_info.wake
         except asyncio.TimeoutError:
             _LOGGER.warning("Failed to get info from wake service")
+
+    async def _start_wake_word_detection(self) -> None:
+        await self._send_wake_detect()
+        _LOGGER.info("Waiting for wake word")
+
+        # Start debug recording (wake)
+        self._debug_recording_timestamp = time.monotonic_ns()
+        if self.wake_audio_writer is not None:
+            self.wake_audio_writer.start(timestamp=self._debug_recording_timestamp)
+
+    async def _trigger_pipeline(self, run_pipeline: RunPipeline) -> None:
+        _LOGGER.debug("Pipeline remotely triggered: %s", run_pipeline)
+
+        if run_pipeline.start_stage == PipelineStage.WAKE:
+            if run_pipeline.wake_word_names:
+                run_pipeline.wake_word_names = [
+                    normalize_wake_word(name) for name in run_pipeline.wake_word_names
+                ]
+
+            _LOGGER.debug(
+                "Listening once for wake words: %s", run_pipeline.wake_word_names
+            )
+            await self.event_to_wake(Detect(names=run_pipeline.wake_word_names).event())
+        elif run_pipeline.start_stage == PipelineStage.ASR:
+            _LOGGER.debug("Listening for voice command once")
+
+            # Fake a detection
+            await self.event_from_wake(Detection().event(), is_fake=True)
+        elif run_pipeline.start_stage == PipelineStage.TTS:
+            _LOGGER.debug("Speaking once: %s", run_pipeline.announce_text)
+            await self.event_to_server(run_pipeline.event())

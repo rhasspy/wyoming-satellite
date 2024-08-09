@@ -22,7 +22,7 @@ from wyoming_satellite import (
 
 from .shared import MicClient
 
-_LOGGER = logging.getLogger()
+_LOGGER = logging.getLogger(__name__)
 
 
 class WakeClient(AsyncClient):

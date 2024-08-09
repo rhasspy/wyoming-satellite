@@ -10,7 +10,7 @@ from pyring_buffer import RingBuffer
 from wyoming.audio import AudioChunk, AudioStart, AudioStop
 from wyoming.event import Event
 
-_LOGGER = logging.getLogger()
+_LOGGER = logging.getLogger(__name__)
 
 
 class AudioBuffer:

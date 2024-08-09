@@ -9,7 +9,7 @@ from wyoming.server import AsyncEventHandler
 
 from .satellite import SatelliteBase
 
-_LOGGER = logging.getLogger()
+_LOGGER = logging.getLogger(__name__)
 
 
 class SatelliteEventHandler(AsyncEventHandler):

@@ -23,7 +23,7 @@ from wyoming.server import AsyncEventHandler, AsyncServer
 from wyoming.vad import VoiceStarted
 from wyoming.wake import Detection
 
-_LOGGER = logging.getLogger()
+_LOGGER = logging.getLogger(__name__)
 
 NUM_LEDS = 3
 LEDS_GPIO = 12

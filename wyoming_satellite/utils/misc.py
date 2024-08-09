@@ -12,7 +12,7 @@ from typing import List, Optional, Union
 
 from wyoming.event import Eventable
 
-_LOGGER = logging.getLogger()
+_LOGGER = logging.getLogger(__name__)
 
 
 async def run_event_command(

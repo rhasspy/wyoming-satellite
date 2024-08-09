@@ -10,7 +10,7 @@ import websockets
 from wyoming.event import Event
 from wyoming.server import AsyncEventHandler, AsyncServer
 
-_LOGGER = logging.getLogger()
+_LOGGER = logging.getLogger(__name__)
 
 
 async def main() -> None:

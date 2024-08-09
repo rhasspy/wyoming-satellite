@@ -3,11 +3,13 @@
 import argparse
 import asyncio
 import logging
+import shlex
 import sys
 from functools import partial
 from pathlib import Path
 
-from wyoming.info import Attribution, Info, Satellite
+from wyoming.audio import AudioFormat
+from wyoming.info import Attribution, Info, MicProgram, Satellite, SndProgram
 from wyoming.server import AsyncServer, AsyncTcpServer
 
 from . import __version__
@@ -26,7 +28,6 @@ from .settings import (
     TimerSettings,
     VadSettings,
     WakeSettings,
-    WakeWordAndPipeline,
 )
 from .utils import (
     get_mac_address,
@@ -36,7 +37,7 @@ from .utils import (
     split_command,
 )
 
-_LOGGER = logging.getLogger()
+_LOGGER = logging.getLogger(__name__)
 _DIR = Path(__file__).parent
 
 
@@ -122,9 +123,7 @@ async def main() -> None:
         "--wake-word-name",
         action="append",
         default=[],
-        nargs="+",
-        metavar=("name", "pipeline"),
-        help="Name of wake word to listen for and optional pipeline name to run (requires --wake-uri)",
+        help="Name of wake word to listen for (requires --wake-uri)",
     )
     parser.add_argument("--wake-command", help="Program to run for wake word detection")
     parser.add_argument(
@@ -154,9 +153,14 @@ async def main() -> None:
 
     # Voice activity detector
     parser.add_argument(
-        "--vad", action="store_true", help="Wait for speech before streaming audio"
+        "--vad", action="store_true", help="Enable voice activity detector"
     )
-    parser.add_argument("--vad-threshold", type=float, default=0.5)
+    parser.add_argument(
+        "--vad-threshold",
+        type=float,
+        default=0.5,
+        help="Threshold for speech (0-1, default: 0.5)",
+    )
     parser.add_argument("--vad-trigger-level", type=int, default=1)
     parser.add_argument("--vad-buffer-seconds", type=float, default=2)
     parser.add_argument(
@@ -165,6 +169,7 @@ async def main() -> None:
         default=5.0,
         help="Seconds before going back to waiting for speech when wake word isn't detected",
     )
+    parser.add_argument("--vad-finished-speaking-seconds", type=float, default=0.8)
 
     # External event handlers
     parser.add_argument(
@@ -330,9 +335,6 @@ async def main() -> None:
         _LOGGER.fatal("%s does not exist", args.timer_finished_wav)
         sys.exit(1)
 
-    if args.vad and (args.wake_uri or args.wake_command):
-        _LOGGER.warning("VAD is not used with local wake word detection")
-
     logging.basicConfig(
         level=logging.DEBUG if args.debug else logging.INFO, format=args.log_format
     )
@@ -350,8 +352,45 @@ async def main() -> None:
             attribution=Attribution(name="", url=""),
             installed=True,
             version=__version__,
+            has_vad=args.vad,
+            supports_trigger=True,
+            active_wake_words=args.wake_word_name,
         )
     )
+
+    if args.mic_command:
+        mic_program = shlex.split(args.mic_command)[0]
+        wyoming_info.mic = [
+            MicProgram(
+                name=mic_program,
+                description=args.mic_command,
+                attribution=Attribution(name="", url=""),
+                installed=True,
+                version=None,
+                mic_format=AudioFormat(
+                    rate=args.mic_command_rate,
+                    width=args.mic_command_width,
+                    channels=args.mic_command_channels,
+                ),
+            )
+        ]
+
+    if args.snd_command:
+        snd_program = shlex.split(args.snd_command)[0]
+        wyoming_info.snd = [
+            SndProgram(
+                name=snd_program,
+                description=args.snd_command,
+                attribution=Attribution(name="", url=""),
+                installed=True,
+                version=None,
+                snd_format=AudioFormat(
+                    rate=args.snd_command_rate,
+                    width=args.snd_command_width,
+                    channels=args.snd_command_channels,
+                ),
+            )
+        ]
 
     settings = SatelliteSettings(
         mic=MicSettings(
@@ -374,13 +413,12 @@ async def main() -> None:
             trigger_level=args.vad_trigger_level,
             buffer_seconds=args.vad_buffer_seconds,
             wake_word_timeout=args.vad_wake_word_timeout,
+            finished_speaking_seconds=args.vad_finished_speaking_seconds,
         ),
         wake=WakeSettings(
             uri=args.wake_uri,
             command=split_command(args.wake_command),
-            names=[
-                WakeWordAndPipeline(*wake_name) for wake_name in args.wake_word_name
-            ],
+            names=args.wake_word_name,
             refractory_seconds=(
                 args.wake_refractory_seconds
                 if args.wake_refractory_seconds > 0
