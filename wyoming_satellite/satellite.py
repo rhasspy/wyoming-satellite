@@ -1199,6 +1199,10 @@ class WakeStreamingSatellite(SatelliteBase):
         # wake word id -> seconds
         self.refractory_timestamp: Dict[Optional[str], float] = {}
 
+        # Timestamp in the future when we will have timed out (set with
+        # time.monotonic())
+        self.timeout_seconds: Optional[float] = None
+
         if settings.vad.enabled:
             _LOGGER.warning("VAD is enabled but will not be used")
 
@@ -1296,6 +1300,25 @@ class WakeStreamingSatellite(SatelliteBase):
             if self.stt_audio_writer is not None:
                 self.stt_audio_writer.write(audio_bytes)
 
+        if ( self.is_streaming
+            and (self.timeout_seconds is not None)
+            and (time.monotonic() >= self.timeout_seconds)
+        ):
+            _LOGGER.debug("Streaming timed out, stopping")
+            # Time out during wake word recognition
+            self.is_streaming = False
+            self.timeout_seconds = None
+
+            # Stop debug recording
+            if self.stt_audio_writer is not None:
+                self.stt_audio_writer.stop()
+
+            # Stop pipeline
+            await self.event_to_server(AudioStop().event())
+
+            _LOGGER.info("Waiting for speech")
+            await self.trigger_streaming_stop()
+
         if self.is_streaming:
             # Forward to server
             await self.event_to_server(event)
@@ -1346,6 +1369,17 @@ class WakeStreamingSatellite(SatelliteBase):
             else:
                 # No refractory period
                 self.refractory_timestamp.pop(detection.name, None)
+
+            # set our timeout window
+            if self.settings.vad.wake_word_timeout is not None:
+                # Set future time when we'll stop streaming if the wake word
+                # hasn't been detected.
+                self.timeout_seconds = (
+                    time.monotonic() + self.settings.vad.wake_word_timeout
+                )
+            else:
+                # No timeout
+                self.timeout_seconds = None
 
             # Forward to the server
             await self.event_to_server(event)
