@@ -13,6 +13,7 @@ Video tutorials:
 * [Wyoming Voice Satellite with ChatGPT](https://www.youtube.com/watch?v=eTKgc0YDCwE)
 * [Local ChatGPT Voice Assistant](https://www.youtube.com/watch?v=pAKqKTkx5X4)
 
+[![An open standard from the Open Home Foundation](https://www.openhomefoundation.org/badges/ohf-open-standard.png)](https://www.openhomefoundation.org/)
 ---
 
 Requires:
