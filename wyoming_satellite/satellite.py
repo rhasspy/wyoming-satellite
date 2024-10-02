@@ -269,7 +269,8 @@ class SatelliteBase:
             forward_event = False
         elif AudioChunk.is_type(event.type):
             # TTS audio
-            await self.event_to_snd(event)
+            if not self.settings.snd.tts_skip_playback:
+                await self.event_to_snd(event)
             forward_event = False
         elif AudioStart.is_type(event.type):
             # TTS started
