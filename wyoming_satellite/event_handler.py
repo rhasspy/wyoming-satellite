@@ -1,7 +1,9 @@
 """Wyoming event handler for satellites."""
 import argparse
+import asyncio
 import logging
 import time
+from typing import Optional
 
 from wyoming.event import Event
 from wyoming.info import Describe, Info
@@ -20,15 +22,18 @@ class SatelliteEventHandler(AsyncEventHandler):
         wyoming_info: Info,
         satellite: SatelliteBase,
         cli_args: argparse.Namespace,
+        queue: asyncio.Queue[Optional[Event]] | None, 
         *args,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
 
         self.cli_args = cli_args
-        self.wyoming_info = wyoming_info
         self.client_id = str(time.monotonic_ns())
+        self.queue = queue
         self.satellite = satellite
+        self.wyoming_info = wyoming_info
+
 
     # -------------------------------------------------------------------------
 
@@ -46,6 +51,9 @@ class SatelliteEventHandler(AsyncEventHandler):
             # New connection
             _LOGGER.debug("Connection cancelled: %s", self.client_id)
             return False
+        
+        if self.queue:
+            await self.queue.put(event)
 
         await self.satellite.event_from_server(event)
 
