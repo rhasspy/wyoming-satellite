@@ -2,11 +2,16 @@
 
 import argparse
 import asyncio
+import base64
+import json
 import logging
 import sys
 from functools import partial
+from typing import Optional
 from pathlib import Path
+import websockets
 
+from wyoming.event import Event
 from wyoming.info import Attribution, Info, Satellite
 from wyoming.server import AsyncServer, AsyncTcpServer
 
@@ -297,6 +302,12 @@ async def main() -> None:
         version=__version__,
         help="Print version and exit",
     )
+
+    # Websockets
+    parser.add_argument("--websocket-host", default="localhost")
+    parser.add_argument("--websocket-port", type=int, default=8675)
+    parser.add_argument("--enable-event-websockets", default=False)
+
     args = parser.parse_args()
 
     # Validate args
@@ -466,17 +477,62 @@ async def main() -> None:
         )
 
     satellite_task = asyncio.create_task(satellite.run(), name="satellite run")
+    queue: "asyncio.Queue[Optional[Event]]" = (
+        asyncio.Queue() if args.enable_event_websockets else None
+    )
 
     try:
-        await server.run(partial(SatelliteEventHandler, wyoming_info, satellite, args))
+        if args.enable_event_websockets:
+            async with websockets.serve(
+                partial(websocket_connected, queue),
+                args.websocket_host,
+                args.websocket_port,
+            ):
+                await server.run(
+                    partial(SatelliteEventHandler, wyoming_info, satellite, args, queue)
+                )
+        else:
+            await server.run(
+                partial(SatelliteEventHandler, wyoming_info, satellite, args, queue)
+            )
     except KeyboardInterrupt:
         pass
     finally:
+        if args.enable_event_websockets:
+            queue.put_nowait(None)
+
         await satellite.stop()
         await satellite_task
 
 
-# -----------------------------------------------------------------------------
+async def websocket_connected(queue: "asyncio.Queue[Optional[Event]]", websocket):
+    try:
+        while True:
+            event = await queue.get()
+            if event is None:
+                # Stop signal
+                break
+            
+            await websocket.send(
+                json.dumps(
+                    {
+                        "type": event.type,
+                        "data": event.data or {},
+                        "payload": (
+                            base64.b64encode(event.payload)
+                            .decode("utf-8")
+                            .replace("'", '"')
+                            if event.payload
+                            else None
+                        ),
+                    },
+                    ensure_ascii=False,
+                )
+            )
+    except websockets.ConnectionClosed:
+        pass
+    except Exception:
+        _LOGGER.exception("Error in websocket handler")
 
 
 def run():

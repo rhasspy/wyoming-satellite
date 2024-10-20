@@ -40,7 +40,6 @@ The examples below uses `alsa-utils` to record and play audio:
 sudo apt-get install alsa-utils
 ```
 
-
 ## Remote Wake Word Detection
 
 Run the satellite with remote wake word detection:
@@ -186,5 +185,22 @@ Satellites can respond to events from the server by running commands:
 * `--timer-updated-command` - timer has been paused/unpaused or has time added/removed (json on stdin)
 * `--timer-cancelled-command` - timer has been cancelled (timer id on stdin)
 * `--timer-finished-command` - timer has finished (timer id on stdin)
+* `--websocket-host` - the hostname or IP address where the WebSocket event service will served on, default is `localhost`
+* `--websocket-port` - the port number the WebSocket event service will be served on, default is `8675`
+* `--enable-event-websockets` - enable the WebSocket event service to subscribe to satellite events, default is False
 
 For more advanced scenarios, use an event service (`--event-uri`). See `wyoming_satellite/example_event_client.py` for a basic client that just logs events.
+
+## Websocket Event Service
+
+In order to stream satellite events to a WebSocket client, run with the following configuration.
+
+```shell
+script/run \
+--name 'my satellite' \   
+--uri 'tcp://0.0.0.0:10700' \  
+--mic-command 'arecord -r 16000 -c 1 -f S16_LE -t raw' \   
+--snd-command 'aplay -r 22050 -c 1 -f S16_LE -t raw' \
+--enable-event-websockets True \
+--websocket-host '0.0.0.0'
+```
