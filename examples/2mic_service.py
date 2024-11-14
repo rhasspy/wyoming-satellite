@@ -13,6 +13,7 @@ import spidev
 from wyoming.asr import Transcript
 from wyoming.event import Event
 from wyoming.satellite import (
+    PauseSatellite,
     RunSatellite,
     SatelliteConnected,
     SatelliteDisconnected,
@@ -123,6 +124,13 @@ class LEDsEventHandler(AsyncEventHandler):
             # Flash
             for _ in range(3):
                 self.color(_GREEN)
+                await asyncio.sleep(0.3)
+                self.color(_BLACK)
+                await asyncio.sleep(0.3)
+        elif PauseSatellite.is_type(event.type):
+            # Flash
+            for _ in range(3):
+                self.color(_RED)
                 await asyncio.sleep(0.3)
                 self.color(_BLACK)
                 await asyncio.sleep(0.3)
