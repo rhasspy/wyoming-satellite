@@ -47,7 +47,7 @@ from .webrtc import WebRtcAudio
 
 _LOGGER = logging.getLogger()
 
-_PONG_TIMEOUT: Final = 5
+_PONG_TIMEOUT: Final = 15
 _PING_SEND_DELAY: Final = 2
 _WAKE_INFO_TIMEOUT: Final = 2
 
