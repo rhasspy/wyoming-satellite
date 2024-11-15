@@ -120,6 +120,8 @@ class LEDsEventHandler(AsyncEventHandler):
             self.color(_BLACK)
         elif RunSatellite.is_type(event.type):
             self.color(_BLACK)
+        elif SatelliteDisconnected.is_type(event.type):
+            self.color(_DARK_RED)
         elif SatelliteConnected.is_type(event.type):
             # Flash
             for _ in range(3):
@@ -128,14 +130,7 @@ class LEDsEventHandler(AsyncEventHandler):
                 self.color(_BLACK)
                 await asyncio.sleep(0.3)
         elif PauseSatellite.is_type(event.type):
-            # Flash
-            for _ in range(3):
-                self.color(_RED)
-                await asyncio.sleep(0.3)
-                self.color(_BLACK)
-                await asyncio.sleep(0.3)
-        elif SatelliteDisconnected.is_type(event.type):
-            self.color(_RED)
+            self.color(_DARK_RED)
 
         return True
 
