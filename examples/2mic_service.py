@@ -14,6 +14,7 @@ from wyoming.asr import Transcript
 from wyoming.event import Event
 from wyoming.satellite import (
     RunSatellite,
+    PauseSatellite,
     SatelliteConnected,
     SatelliteDisconnected,
     StreamingStarted,
@@ -79,6 +80,7 @@ async def main() -> None:
 _BLACK = (0, 0, 0)
 _WHITE = (255, 255, 255)
 _RED = (255, 0, 0)
+_DARK_RED = (50, 0, 0)
 _YELLOW = (255, 255, 0)
 _BLUE = (0, 0, 255)
 _GREEN = (0, 255, 0)
@@ -119,6 +121,10 @@ class LEDsEventHandler(AsyncEventHandler):
             self.color(_BLACK)
         elif RunSatellite.is_type(event.type):
             self.color(_BLACK)
+        elif PauseSatellite.is_type(event.type):
+            self.color(_DARK_RED)
+        elif SatelliteDisconnected.is_type(event.type):
+            self.color(_DARK_RED)
         elif SatelliteConnected.is_type(event.type):
             # Flash
             for _ in range(3):
@@ -126,8 +132,6 @@ class LEDsEventHandler(AsyncEventHandler):
                 await asyncio.sleep(0.3)
                 self.color(_BLACK)
                 await asyncio.sleep(0.3)
-        elif SatelliteDisconnected.is_type(event.type):
-            self.color(_RED)
 
         return True
 
