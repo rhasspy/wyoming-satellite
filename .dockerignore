@@ -1,11 +1,16 @@
 *
 !requirements.txt
+!requirements_audio_enhancement.txt
+!requirements_vad.txt
 !MANIFEST.in
 !setup.py
 !script/setup
 !script/run
+!script/run_2mic
+!script/run_4mic
 !wyoming_satellite/*.py
 !wyoming_satellite/utils
 !wyoming_satellite/VERSION
 !docker/run
 !sounds/*.wav
+!examples/*
