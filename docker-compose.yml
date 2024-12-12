@@ -1,38 +1,88 @@
-version: "3.8"
+---
+networks:
+  default:                # default network for this project
+
+
 services:
-  microphone:
-    image: "rhasspy/wyoming-mic-external"
-    ports:
-      - "10600:10600"
-    devices:
-      - /dev/snd:/dev/snd
-    group_add:
-      - audio
-    command:
-      - "--device"
-      - "sysdefault"
-      - "--debug"
-  playback:
-    image: "rhasspy/wyoming-snd-external"
-    ports:
-      - "10601:10601"
-    devices:
-      - /dev/snd:/dev/snd
-    group_add:
-      - audio
-    command:
-      - "--device"
-      - "sysdefault"
-      - "--debug"
   satellite:
-    image: "rhasspy/wyoming-satellite"
-    ports:
-      - "10700:10700"
+    # satellite for homeassistant - nabucasa - whyoming voice
+    container_name: satellite
+    image: "ghcr.io/florian-asche/pi-voice-assistant:nightly"
+    restart: unless-stopped
+    network_mode: "host"
+    devices:
+      - /dev/snd:/dev/snd
+      - /dev/bus/usb
+    group_add:
+      - audio
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     command:
-      - "--name"
-      - "my satellite"
-      - "--mic-uri"
-      - "tcp://microphone:10600"
-      - "--snd-uri"
-      - "tcp://playback:10601"
       - "--debug"
+      - "--name"
+      - "satellite-wohnzimmer"
+      - "--vad"
+      #- "--vad-buffer-seconds"
+      #- "4"
+      - "--mic-auto-gain"
+      - "5"
+      - "--mic-noise-suppression"
+      - "2"
+      #- "--wake-refractory-seconds"
+      #- "3"
+      - "--mic-command"
+      - "arecord -D plughw:CARD=seeed2micvoicec,DEV=0 -r 16000 -c 1 -f S16_LE -t raw"
+      - "--snd-command"
+      - "aplay -D plughw:CARD=seeed2micvoicec,DEV=0 -r 22050 -c 1 -f S16_LE -t raw"
+      - "--wake-uri"
+      - "tcp://127.0.0.1:10400"
+      - "--wake-word-name"
+      - "hey_jarvis"
+      - "--event-uri"
+      - "tcp://127.0.0.1:10500"
+    depends_on:
+      - ledcontrol
+      - openwakeword
+  
+  # Control 2mic_hat led
+  ledcontrol:
+    container_name: ledcontrol
+    image: "ghcr.io/florian-asche/pi-voice-assistant:nightly"
+    restart: unless-stopped
+    network_mode: "host"
+    entrypoint: /app/script/run_2mic
+    devices:
+      - /dev/gpiomem:/dev/gpiomem
+      - /dev/spidev0.0:/dev/spidev0.0
+      - /dev/spidev0.1:/dev/spidev0.1
+    #group_add:
+    #  - audio
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    command:
+      - "--debug"
+      - "--uri"
+      - "tcp://0.0.0.0:10500"
+
+  # Wake word detection
+  openwakeword:
+    container_name: openwakeword
+    image: rhasspy/wyoming-openwakeword
+    restart: unless-stopped
+    #user: 1001:1001
+    network_mode: "host"
+    volumes:
+      - wakeword_data:/data
+      - wakeword_custom:/custom
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - TZ=Europe/Berlin
+    command: "--preload-model 'hey_jarvis' --custom-model-dir /custom --threshold 0.3 --trigger-level 1"
+
+
+volumes:
+  wakeword_data:
+  wakeword_custom:
