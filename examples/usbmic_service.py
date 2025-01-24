@@ -6,6 +6,7 @@ import logging
 import time
 from functools import partial
 
+from pixel_ring import pixel_ring
 from wyoming.event import Event
 from wyoming.satellite import (
     SatelliteConnected,
@@ -13,14 +14,13 @@ from wyoming.satellite import (
     StreamingStarted,
     StreamingStopped,
 )
-from wyoming.snd import Played
 from wyoming.server import AsyncEventHandler, AsyncServer
+from wyoming.snd import Played
 from wyoming.vad import VoiceStarted, VoiceStopped
 from wyoming.wake import Detection
 
-from pixel_ring import pixel_ring
-
 _LOGGER = logging.getLogger()
+
 
 async def main() -> None:
     """Main entry point."""
@@ -35,7 +35,7 @@ async def main() -> None:
     _LOGGER.info("Ready")
 
     # Turn on power to LEDs
-    pixel_ring.set_color_palette(0x0080ff, 0x007a37)
+    pixel_ring.set_color_palette(0x0080FF, 0x007A37)
     pixel_ring.think()
     await asyncio.sleep(3)
     pixel_ring.off()
@@ -92,9 +92,10 @@ class LEDsEventHandler(AsyncEventHandler):
             pixel_ring.off()
         elif SatelliteDisconnected.is_type(event.type):
             _LOGGER.debug("SatelliteDisconnected")
-            pixel_ring.mono(0xff0000)
+            pixel_ring.mono(0xFF0000)
 
         return True
+
 
 if __name__ == "__main__":
     try:
