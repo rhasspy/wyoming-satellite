@@ -20,7 +20,6 @@ builder.create(_VENV_DIR)
 # Upgrade dependencies
 pip = [context.env_exe, "-m", "pip"]
 subprocess.check_call(pip + ["install", "--upgrade", "pip"])
-subprocess.check_call(pip + ["install", "--upgrade", "setuptools", "wheel"])
 
 # Install requirements
 subprocess.check_call(
@@ -31,8 +30,8 @@ subprocess.check_call(
         "https://www.piwheels.org/simple",
         "-f",
         "https://synesthesiam.github.io/prebuilt-apps/",
-        "-r",
-        str(_PROGRAM_DIR / "requirements.txt"),
+        "-e",
+        ".",
     ]
 )
 
