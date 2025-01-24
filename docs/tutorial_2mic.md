@@ -55,9 +55,7 @@ python3 -m venv .venv
 .venv/bin/pip3 install --upgrade wheel setuptools
 .venv/bin/pip3 install \
   -f 'https://synesthesiam.github.io/prebuilt-apps/' \
-  -r requirements.txt \
-  -r requirements_audio_enhancement.txt \
-  -r requirements_vad.txt
+  -e '.[all]'
 ```
 
 If the installation was successful, you should be able to run:

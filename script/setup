@@ -31,12 +31,12 @@ subprocess.check_call(
         "-f",
         "https://synesthesiam.github.io/prebuilt-apps/",
         "-e",
-        ".",
+        str(_PROGRAM_DIR),
     ]
 )
 
 if args.dev:
     # Install dev requirements
     subprocess.check_call(
-        pip + ["install", "-r", str(_PROGRAM_DIR / "requirements_dev.txt")]
+        pip + ["install", "-e", f"{_PROGRAM_DIR}[dev]"]
     )

@@ -33,6 +33,17 @@ dependencies = [
 all = ["pysilero-vad==1.0.0", "webrtc-noise-gain==1.2.3"]
 silerovad = ["pysilero-vad==1.0.0"]
 webrtc = ["webrtc-noise-gain==1.2.3"]
+respeaker = ["gpiozero", "spidev"]
+dev = [
+    "black==22.12.0",
+    "flake8==6.0.0",
+    "isort==5.11.3",
+    "mypy==0.991",
+    "pylint==2.15.9",
+    "pytest==7.4.3",
+    "pytest-asyncio==0.23.3",
+    "build==1.2.2"
+]
 
 [project.scripts]
 wyoming-satellite = "wyoming_satellite:__main__.run"
