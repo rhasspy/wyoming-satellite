@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0
+
+- Migrate to pyproject.toml
+
+## 1.3.1
+
+- Send audio-start to wake service after detect
+
 ## 1.3.0
 
 - Bump to wyoming 1.5.4 (timers)

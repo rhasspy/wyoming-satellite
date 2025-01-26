@@ -123,7 +123,7 @@ def apply_settings(settings: Settings) -> None:
     ):
         result = run_with_gauge(
             "Installing vad...",
-            [pip_install("-r", str(PROGRAM_DIR / "requirements_vad.txt"))],
+            [pip_install("-e", f"{PROGRAM_DIR}[silerovad]")],
         )
         if not result:
             error("installing vad")
@@ -135,11 +135,7 @@ def apply_settings(settings: Settings) -> None:
     ):
         result = run_with_gauge(
             "Installing audio enhancements...",
-            [
-                pip_install(
-                    "-r", str(PROGRAM_DIR / "requirements_audio_enhancement.txt")
-                )
-            ],
+            [pip_install("-e", f"{PROGRAM_DIR}[webrtc]")],
         )
         if not result:
             error("installing audio enhancements")
@@ -154,7 +150,7 @@ def apply_settings(settings: Settings) -> None:
     ) and (not can_import("gpiozero", "spidev")):
         result = run_with_gauge(
             "Installing event requirements...",
-            [pip_install("-r", str(PROGRAM_DIR / "requirements_respeaker.txt"))],
+            [pip_install("-e", f"{PROGRAM_DIR}[respeaker]")],
         )
         if not result:
             error("installing event requirements")

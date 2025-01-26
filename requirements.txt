@@ -1,3 +1,0 @@
-wyoming==1.5.4
-zeroconf==0.88.0
-pyring-buffer==1.0.0

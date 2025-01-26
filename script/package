@@ -8,4 +8,4 @@ _PROGRAM_DIR = _DIR.parent
 _VENV_DIR = _PROGRAM_DIR / ".venv"
 
 context = venv.EnvBuilder().ensure_directories(_VENV_DIR)
-subprocess.check_call([context.env_exe, _PROGRAM_DIR / "setup.py", "bdist_wheel"])
+subprocess.check_call([context.env_exe, "-m", "build", "--wheel", "--sdist"])

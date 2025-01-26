@@ -1,4 +1,5 @@
 """Satellite code."""
+
 import array
 import asyncio
 import logging
@@ -514,9 +515,11 @@ class SatelliteBase:
                     event = AudioChunk(
                         rate=chunk.rate,
                         width=chunk.width,
-                        channels=chunk.channels
-                        if (self.settings.mic.channel_index is None)
-                        else 1,
+                        channels=(
+                            chunk.channels
+                            if (self.settings.mic.channel_index is None)
+                            else 1
+                        ),
                         audio=audio_bytes,
                     ).event()
                 else:
@@ -805,6 +808,13 @@ class SatelliteBase:
             wake_names = [w.name for w in self.settings.wake.names]
 
         await self.event_to_wake(Detect(names=wake_names).event())
+        await self.event_to_wake(
+            AudioStart(
+                rate=self.settings.mic.rate,
+                width=self.settings.mic.width,
+                channels=self.settings.mic.channels,
+            ).event()
+        )
         await self.trigger_detect()
 
     # -------------------------------------------------------------------------

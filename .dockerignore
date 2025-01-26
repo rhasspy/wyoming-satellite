@@ -1,7 +1,5 @@
 *
-!requirements.txt
-!MANIFEST.in
-!setup.py
+!pyproject.toml
 !script/setup
 !script/run
 !wyoming_satellite/*.py
