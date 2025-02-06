@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Use chunk_samples in the SileroVad class. This avoids triggering pysilero_vad.InvalidChunkSizeError in versions of pysilero_vad >= 2.0.0.
+
 ## 1.4.0
 
 - Migrate to pyproject.toml
