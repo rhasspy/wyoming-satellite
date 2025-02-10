@@ -10,6 +10,7 @@ _VENV_DIR = _PROGRAM_DIR / ".venv"
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dev", action="store_true", help="Install dev requirements")
+parser.add_argument("--websockets", action="store_true", help="Install websocket requirements")
 args = parser.parse_args()
 
 # Create virtual environment
@@ -39,4 +40,10 @@ if args.dev:
     # Install dev requirements
     subprocess.check_call(
         pip + ["install", "-e", f"{_PROGRAM_DIR}[dev]"]
+    )
+
+if args.websockets:
+    # Install websocket requirements
+    subprocess.check_call(
+        pip + ["install", "-r", str(_PROGRAM_DIR / "requirements_websockets.txt")]
     )
