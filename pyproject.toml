@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name        = "wyoming_satellite"
-version     = "1.3.1"
+version     = "1.4.1"
 license     = {text = "MIT"}
 description = "Wyoming server for remote voice satellite"
 readme      = "README.md"

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.1
+
+- Send `played` event to server
+
 ## 1.4.0
 
 - Migrate to pyproject.toml
