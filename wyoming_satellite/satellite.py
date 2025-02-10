@@ -321,9 +321,14 @@ class SatelliteBase:
         if forward_event:
             await self.forward_event(event)
 
-    async def _send_run_pipeline(self, pipeline_name: Optional[str] = None) -> None:
+    async def _send_run_pipeline(
+        self, pipeline_name: Optional[str] = None, start_stage: PipelineStage = None
+    ) -> None:
         """Sends a RunPipeline event with the correct stages."""
-        if self.settings.wake.enabled:
+        if start_stage is not None:
+            # specific stage requested by the server
+            restart_on_end = False
+        elif self.settings.wake.enabled:
             # Local wake word detection
             start_stage = PipelineStage.ASR
             restart_on_end = False
@@ -990,7 +995,11 @@ class AlwaysStreamingSatellite(SatelliteBase):
         if RunSatellite.is_type(event.type):
             self.is_streaming = True
             _LOGGER.info("Streaming audio")
-            await self._send_run_pipeline()
+
+            run = RunSatellite.from_event(event)
+            assert run.start_stage in (None, PipelineStage.ASR)
+            await self._send_run_pipeline(start_stage=run.start_stage)
+
             await self.trigger_streaming_start()
         elif PauseSatellite.is_type(event.type):
             self.is_streaming = False
@@ -1069,7 +1078,16 @@ class VadStreamingSatellite(SatelliteBase):
 
         if RunSatellite.is_type(event.type):
             self._is_paused = False
-            _LOGGER.info("Waiting for speech")
+
+            run = RunSatellite.from_event(event)
+            if run.start_stage == PipelineStage.ASR:
+                # server requested ASR pipeline, send RunPipeline and start streaming
+                await self._send_run_pipeline(start_stage=run.start_stage)
+                self.is_streaming = True
+                await self.trigger_streaming_start()
+            else:
+                assert run.start_stage is None
+                _LOGGER.info("Waiting for speech")
         elif Detection.is_type(event.type):
             # Start debug recording
             if self.stt_audio_writer is not None:
@@ -1230,8 +1248,18 @@ class WakeStreamingSatellite(SatelliteBase):
         is_error = False
 
         if RunSatellite.is_type(event.type):
-            is_run_satellite = True
             self._is_paused = False
+
+            run = RunSatellite.from_event(event)
+            if run.start_stage == PipelineStage.ASR:
+                # server requested ASR pipeline, send RunPipeline and start streaming
+                await self._send_run_pipeline(start_stage=run.start_stage)
+                self.is_streaming = True
+                await self.trigger_streaming_start()
+            else:
+                # start wake word detection below
+                assert run.start_stage is None
+                is_run_satellite = True
 
         elif PauseSatellite.is_type(event.type):
             is_pause_satellite = True
