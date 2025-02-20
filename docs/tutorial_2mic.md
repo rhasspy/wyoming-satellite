@@ -244,6 +244,12 @@ WantedBy=default.target
 
 Save the file and exit your editor.
 
+Enable the service to start at boot and run it
+
+``` sh
+sudo systemctl enable --now wyoming-openwakeword.service
+```
+
 You can now update your satellite service:
 
 ``` sh
