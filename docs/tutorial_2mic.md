@@ -281,6 +281,9 @@ journalctl -u wyoming-microwakeword.service -f
 
 Make sure to run `sudo systemctl daemon-reload` every time you make changes to the service.
 
+You may also use [openwakeword](https://github.com/rhasspy/wyoming-openwakeword) instead of microwakeword, since there are more custom wakewords available for it.
+The instructions are the same, with the exception of using `openwakeword` in names instead of `microwakeword`, and setting `--wake-word-name 'ok_nabu'` instead of `--wake-word-name 'okay_nabu'`.
+
 ## LED Service
 
 Example event services for the ReSpeaker 2Mic and 4Mic HATs are included in `wyoming-satellite/examples` that will change the LED color depending on the satellite state. The example below is for the 2Mic HAT, using `2mic_service.py`.  If you're using the 4Mic HAT, use `4mic_service.py` instead as the LEDs and GPIO pins are slightly different.
