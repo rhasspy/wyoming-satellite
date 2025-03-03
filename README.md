@@ -34,12 +34,60 @@ Then run the install script:
 script/setup
 ```
 
-The examples below uses `alsa-utils` to record and play audio:
+The examples below use `alsa-utils` to record and play audio:
 
 ``` sh
 sudo apt-get install alsa-utils
 ```
 
+## Deploying with Docker
+
+You can run Wyoming Satellite using Docker with the official `rhasspy/wyoming-satellite` image.
+
+### Using `docker run`
+
+``` sh
+docker run --rm -it --device /dev/snd --group-add audio \
+  -p 10700:10700 rhasspy/wyoming-satellite \
+  --name my-satellite \
+  --debug \
+  --uri 'tcp://0.0.0.0:10700' \
+  --mic-command 'arecord -r 16000 -c 1 -f S16_LE -t raw' \
+  --snd-command 'aplay -r 22050 -c 1 -f S16_LE -t raw' \
+  --wake-uri 'tcp://<WAKE_WORD_SERVICE_HOST>:<PORT>' \
+  --wake-word-name 'ok_nabu'
+```
+
+### Using `docker-compose`
+
+Create a `docker-compose.yml` file with the following content:
+
+```yaml
+version: '3.8'
+
+services:
+  my-satellite:
+    image: rhasspy/wyoming-satellite
+    container_name: my-satellite
+    restart: unless-stopped
+    ports:
+      - "10700:10700"
+    devices:
+      - "/dev/snd:/dev/snd"
+    group_add:
+      - "audio"
+    command: >
+      --debug
+      --uri 'tcp://0.0.0.0:10700'
+      --mic-command 'arecord -r 16000 -c 1 -f S16_LE -t raw'
+      --snd-command 'aplay -r 22050 -c 1 -f S16_LE -t raw'
+      --wake-uri 'tcp://<WAKE_WORD_SERVICE_HOST>:<PORT>'
+      --wake-word-name 'ok_nabu'
+```
+
+After running this container, you can add a new Wyoming service in the Wyoming Protocol integration in Home Assistant. In the integration settings, point to the satellite host that is running this container at port `10700`.
+
+The wake word service host (`<WAKE_WORD_SERVICE_HOST>`) should be set to the service handling wake word detection, such as [wyoming-openwakeword](#local-wake-word-detection).
 
 ## Remote Wake Word Detection
 
