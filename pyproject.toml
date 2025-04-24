@@ -57,5 +57,5 @@ zip-safe  = true
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["wyoming_satellite"]
+include = ["wyoming_satellite", "wyoming_satellite.utils"]
 exclude = ["tests", "tests.*"]
