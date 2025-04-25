@@ -47,14 +47,14 @@ threads="$(getconf _NPROCESSORS_ONLN)"
 memory="$(LANG=C free -m|awk '/^Mem:/{print $2}')"
 
 if  [ "${memory}" -le 512 ] && [ "${threads}" -gt 2 ]; then
-threads=2
+    sed -i '$a\MAKE[0]="'\''make'\'' -j2"' "${src}/dkms.conf"
 fi
 
 mkdir -p "/usr/src/${mod}-${ver}"
 cp -a "${src}"/* "/usr/src/${mod}-${ver}/"
 
 dkms add -m "${mod}" -v "${ver}"
-dkms build -k "${kernel}" -m "${mod}" -v "${ver}" -j "${threads}" && {
+dkms build -k "${kernel}" -m "${mod}" -v "${ver}" && {
     dkms install --force -k "${kernel}" -m "${mod}" -v "${ver}"
 }
 
