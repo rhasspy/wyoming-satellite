@@ -84,8 +84,8 @@ class WebsocketEventHandler(AsyncEventHandler):
         self.queue = queue
 
     async def handle_event(self, event: Event) -> bool:
-        _LOGGER.debug(event)
-        self.queue.put_nowait(event)
+        _LOGGER.info(event)
+        await self.queue.put(event)
 
         return True
 
