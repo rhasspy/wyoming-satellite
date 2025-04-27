@@ -83,6 +83,9 @@ class SndSettings(ServiceSettings):
     done_wav: Optional[str] = None
     """Path to WAV file played after voice command is recognized."""
 
+    tts_skip_playback: Optional[bool] = False
+    """Skip TTS playback.  Defaults to False."""
+
     rate: int = 22050
     """Sample rate of output audio (hertz)"""
 
