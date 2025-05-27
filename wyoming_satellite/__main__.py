@@ -1,5 +1,3 @@
-"""Main entry point for Wyoming satellite."""
-
 import argparse
 import asyncio
 import logging
