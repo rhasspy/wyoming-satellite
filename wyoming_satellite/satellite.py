@@ -284,9 +284,10 @@ class SatelliteBase:
             # Wake word detection started
             await self.trigger_detect()
         elif Detection.is_type(event.type):
-            # Wake word detected
-            _LOGGER.debug("Wake word detected")
-            await self.trigger_detection(Detection.from_event(event))
+            if not self.is_streaming:
+                _LOGGER.info("Conversation started by server")
+                await self._handle_server_detection(Detection.from_event(event))
+            return  # This event is for client-side control only
         elif VoiceStarted.is_type(event.type):
             # STT start
             await self.trigger_stt_start()
@@ -1223,6 +1224,15 @@ class WakeStreamingSatellite(SatelliteBase):
         self._wake_info_ready = asyncio.Event()
 
     async def event_from_server(self, event: Event) -> None:
+        # ---- START MODIFICATION ----
+        # Handle fake Detection event from server to start a conversation
+        if Detection.is_type(event.type):
+            if not self.is_streaming:
+                _LOGGER.info("Conversation started by server")
+                await self._handle_server_detection(Detection.from_event(event))
+            return  # This event is for client-side control only
+        # ---- END MODIFICATION ----
+
         # Only check event types once
         is_run_satellite = False
         is_pause_satellite = False
@@ -1273,6 +1283,33 @@ class WakeStreamingSatellite(SatelliteBase):
                         self.wake_audio_writer.start(
                             timestamp=self._debug_recording_timestamp
                         )
+
+    # ---- START MODIFICATION ----
+    async def _handle_server_detection(self, detection: Detection) -> None:
+        """Handle a fake detection event from the server to start streaming."""
+        if self.is_streaming or (self.server_id is None):
+            return
+
+        # Don't check refractory period for server commands.
+
+        if self.wake_audio_writer is not None:
+            self.wake_audio_writer.stop()
+
+        if self.stt_audio_writer is not None:
+            self.stt_audio_writer.start(timestamp=self._debug_recording_timestamp)
+
+        _LOGGER.debug(detection)
+        self.is_streaming = True
+        _LOGGER.info("Streaming audio")
+
+        # Don't set refractory period for server commands.
+        # Don't forward the detection event back to the server.
+        # No pipeline name matching needed, the server already knows.
+        await self._send_run_pipeline()
+        await self.forward_event(detection.event())  # forward to event service
+        await self.trigger_streaming_start()
+
+    # ---- END MODIFICATION ----
 
     async def trigger_server_disonnected(self) -> None:
         await super().trigger_server_disonnected()
