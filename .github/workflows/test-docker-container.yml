@@ -2,7 +2,7 @@ name: Test Docker Container
 
 on:
   workflow_run:
-    workflows: ["Build and push Docker image"]
+    workflows: ["Build and publish the docker image"]
     types:
       - completed
 
