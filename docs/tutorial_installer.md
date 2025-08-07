@@ -73,3 +73,48 @@ Check logs with:
 ```sh
 sudo journalctl -f -u wyoming-satellite.service
 ```
+
+## Voice Activity Detection (Optional)
+
+Rather than always streaming audio to Home Assistant, the satellite can wait until speech is detected.
+
+**NOTE:** This will not work on the 32-bit version of Raspberry Pi OS.
+
+Install the dependencies for silero VAD:
+
+``` sh
+.venv/bin/pip3 install 'pysilero-vad==1.0.0'
+```
+
+Run the satellite with VAD enabled:
+
+``` sh
+script/run \
+  ... \
+  --vad
+```
+
+Now, audio will only start streaming once speech has been detected.
+
+## Audio Enhancements (Optional)
+
+Install the dependencies for webrtc:
+
+``` sh
+.venv/bin/pip3 install 'webrtc-noise-gain==1.2.3'
+```
+
+Run the satellite with automatic gain control and noise suppression:
+
+``` sh
+script/run \
+  ... \
+  --mic-auto-gain 5 \
+  --mic-noise-suppression 2
+```
+
+Automatic gain control is between 0-31 dbFS, which 31 being the loudest.
+Noise suppression is from 0-4, with 4 being maximum suppression (may cause audio distortion).
+
+You can also use `--mic-volume-multiplier X` to multiply all audio samples by `X`. For example, using 2 for `X` will double the microphone volume (but may cause audio distortion). The corresponding `--snd-volume-multiplier` does the same for audio playback.
+
