@@ -1,0 +1,77 @@
+---
+
+services:
+  satellite:
+    # satellite for homeassistant - nabucasa - whyoming voice
+    container_name: satellite
+    image: "ghcr.io/florian-asche/wyoming-satellite:add-docker-build"
+    restart: unless-stopped
+    network_mode: "host"
+    #user: "1000"
+    environment:
+      - PIPEWIRE_RUNTIME_DIR=/run
+      - XDG_RUNTIME_DIR=/run
+    devices:
+      - /dev/snd:/dev/snd
+      - /dev/bus/usb
+    group_add:
+      - audio
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      # 1000 is my user id from the local user i used on my ubuntu desktop or pi-compose image
+      - /run/user/1000/pipewire-0:/run/pipewire-0
+      - /run/user/1000/pipewire-0-manager:/run/pipewire-0-manager
+      - /etc/alsa/conf.d/99-virtual-default.conf:/etc/alsa/conf.d/99-virtual-default.conf:ro
+    command:
+      - "--debug"
+      - "--name"
+      - "<place_example_satellite_name_here>"
+      - "--vad"
+      #- "--vad-buffer-seconds"
+      #- "4"
+      - "--mic-auto-gain"
+      - "5"
+      - "--mic-noise-suppression"
+      - "2"
+      #- "--wake-refractory-seconds"
+      #- "3"
+      - "--mic-command"
+      - "arecord -D pipewire -r 16000 -c 1 -f S16_LE -t raw"
+      - "--mic-command-rate"
+      - "16000"
+      - "--mic-command-channel"
+      - "1"
+      - "--snd-command"
+      - "aplay -D pipewire -r 16000 -c 1 -f S16_LE -t raw"
+      - "--snd-command-rate"
+      - "16000"
+      - "--snd-command-channels"
+      - "1"
+      - "--wake-uri"
+      - "tcp://127.0.0.1:10400"
+      - "--wake-word-name"
+      - "hey_jarvis"
+        #- "--disable-disconnect-after-stop"
+      - "--snd-volume-multiplier"
+      - "0.3"
+    depends_on:
+      - openwakeword
+
+  # Wake word detection
+  openwakeword:
+    container_name: openwakeword
+    image: rhasspy/wyoming-openwakeword
+    restart: unless-stopped
+    network_mode: "host"
+    volumes:
+      - wakeword_data:/data
+      - wakeword_custom:/custom
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    command: "--preload-model 'hey_jarvis' --custom-model-dir /custom --threshold 0.3 --trigger-level 1"
+
+
+volumes:
+  wakeword_data:
+  wakeword_custom:

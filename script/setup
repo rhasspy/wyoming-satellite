@@ -9,6 +9,9 @@ _PROGRAM_DIR = _DIR.parent
 _VENV_DIR = _PROGRAM_DIR / ".venv"
 
 parser = argparse.ArgumentParser()
+parser.add_argument("--vad", action="store_true", help="Install voice audio detection requirements (pysilero-vad)")
+parser.add_argument("--noisegain", action="store_true", help="Install webrtc noise-gain requirements")
+parser.add_argument("--respeaker", action="store_true", help="Install respeaker hardware requirements")
 parser.add_argument("--dev", action="store_true", help="Install dev requirements")
 args = parser.parse_args()
 
@@ -21,7 +24,7 @@ builder.create(_VENV_DIR)
 pip = [context.env_exe, "-m", "pip"]
 subprocess.check_call(pip + ["install", "--upgrade", "pip"])
 
-# Install requirements
+# Install base requirements
 subprocess.check_call(
     pip
     + [
@@ -34,6 +37,16 @@ subprocess.check_call(
         str(_PROGRAM_DIR),
     ]
 )
+
+# Install optional dependencies based on arguments
+if args.vad:
+    subprocess.check_call(pip + ["install", "-e", f"{_PROGRAM_DIR}[vad]"])
+
+if args.noisegain:
+    subprocess.check_call(pip + ["install", "-e", f"{_PROGRAM_DIR}[noisegain]"])
+
+if args.respeaker:
+    subprocess.check_call(pip + ["install", "-e", f"{_PROGRAM_DIR}[respeaker]"])
 
 if args.dev:
     # Install dev requirements
