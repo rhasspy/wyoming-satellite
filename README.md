@@ -1,4 +1,8 @@
-# Wyoming Satellite
+# Deprecation Notice
+
+**NOTE**: This project is no longer maintained as it has been replaced by [Linux Voice Assistant](https://github.com/OHF-Voice/linux-voice-assistant) that uses the ESPHome protocol, which supports the newest features (e.g, media player, stop wake word, start/continue conversation, and timers)
+
+## [DEPRECATED] Wyoming Satellite
 
 Remote voice satellite using the [Wyoming protocol](https://github.com/rhasspy/wyoming).
 
