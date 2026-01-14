@@ -13,6 +13,7 @@ import spidev
 from wyoming.asr import Transcript
 from wyoming.event import Event
 from wyoming.satellite import (
+    PauseSatellite,
     RunSatellite,
     SatelliteConnected,
     SatelliteDisconnected,
@@ -22,6 +23,10 @@ from wyoming.satellite import (
 from wyoming.server import AsyncEventHandler, AsyncServer
 from wyoming.vad import VoiceStarted
 from wyoming.wake import Detection
+from wyoming.tts import Synthesize
+from wyoming.audio import AudioStop
+from wyoming.snd import Played
+from wyoming.error import Error
 
 _LOGGER = logging.getLogger()
 
@@ -79,9 +84,12 @@ async def main() -> None:
 _BLACK = (0, 0, 0)
 _WHITE = (255, 255, 255)
 _RED = (255, 0, 0)
+_DARK_RED = (50, 0, 0)
 _YELLOW = (255, 255, 0)
 _BLUE = (0, 0, 255)
 _GREEN = (0, 255, 0)
+_CYAN = (0, 255, 255)
+_PURPLE = (128, 0, 128)
 
 
 class LEDsEventHandler(AsyncEventHandler):
@@ -99,6 +107,7 @@ class LEDsEventHandler(AsyncEventHandler):
         self.cli_args = cli_args
         self.client_id = str(time.monotonic_ns())
         self.leds = leds
+        self.previous_event = None
 
         _LOGGER.debug("Client connected: %s", self.client_id)
 
@@ -119,6 +128,8 @@ class LEDsEventHandler(AsyncEventHandler):
             self.color(_BLACK)
         elif RunSatellite.is_type(event.type):
             self.color(_BLACK)
+        elif SatelliteDisconnected.is_type(event.type):
+            self.color(_DARK_RED)
         elif SatelliteConnected.is_type(event.type):
             # Flash
             for _ in range(3):
@@ -126,8 +137,23 @@ class LEDsEventHandler(AsyncEventHandler):
                 await asyncio.sleep(0.3)
                 self.color(_BLACK)
                 await asyncio.sleep(0.3)
-        elif SatelliteDisconnected.is_type(event.type):
-            self.color(_RED)
+        elif PauseSatellite.is_type(event.type):
+            self.color(_DARK_RED)
+        elif Error.is_type(event.type):
+            # Flash
+            for _ in range(3):
+                self.color(_PURPLE)
+                await asyncio.sleep(0.3)
+                self.color(_BLACK)
+                await asyncio.sleep(0.3)
+        # While the assist is responding with audio, the LEDs should be cyan
+        elif Synthesize.is_type(event.type):
+            self.color(_CYAN)
+        # When the assist is done responding with audio, the LEDs should be black
+        elif Played.is_type(event.type) and AudioStop.is_type(self.previous_event):
+            self.color(_BLACK)
+
+        self.previous_event = event.type
 
         return True
 
