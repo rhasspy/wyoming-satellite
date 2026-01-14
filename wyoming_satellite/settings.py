@@ -133,6 +133,30 @@ class WakeSettings(ServiceSettings):
 
 
 @dataclass(frozen=True)
+class FSMSettings:
+
+    stream_giveup_delay: float = 5
+    """Time in seconds after which we should give up and cancel streaming audio to the server if no vad has triggered since we started streaming."""
+
+    stream_end_delay: float = 1.2
+    """Seconds of continuos time to require with no VAD trigger before determining that user speech has ended and closing a stream. This only applies if VAD has triggered at least once since the start of the stream; othrewise, see stream_giveup_delay."""
+
+    tts_end_delay: float = 0.5
+    """Seconds to wait after TTS playback stops before we start listening for user speech again."""
+
+    followup_vad_refractory: float = 1.5
+    """Seconds to wait after entering a followup state before VAD triggers are honored. This delay helps prevent false postitive VAD triggers that might otherwise happen due to TTS feedback."""
+
+    followup_timeout: float = 10
+    """During followup, seconds to wait for VAD before returning to monitor state (i.e., requiring wakeword again)"""
+
+    listen_start_alert_wav: Optional[str] = "sounds/awake-quiet.wav"
+    """Wav file to play when the satellite detects the beginning of user speech, which means that either a wakeword detection occurs during monitor state, or VAD occurs during followup state. File plays using snd service."""
+    listen_stop_alert_wav: Optional[str] = "sounds/done-quiet.wav"
+    """Wav file to play when the satellite detects the end of user speech."""
+
+
+@dataclass(frozen=True)
 class VadSettings:
     """Voice activity detector settings."""
 
@@ -209,6 +233,7 @@ class SatelliteSettings:
     snd: SndSettings = field(default_factory=SndSettings)
     event: EventSettings = field(default_factory=EventSettings)
     timer: TimerSettings = field(default_factory=TimerSettings)
+    fsm: FSMSettings = field(default_factory=FSMSettings)
 
     restart_timeout: float = 5.0
 
