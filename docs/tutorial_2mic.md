@@ -208,33 +208,33 @@ Install the necessary system dependencies:
 ```sh
 sudo apt-get update
 sudo apt-get install --no-install-recommends  \
-  libopenblas-dev
+  python3-dev
 ```
 
-From your home directory, install the openWakeWord Wyoming service:
+From your home directory, install the microWakeWord Wyoming service:
 
 ```sh
-git clone https://github.com/rhasspy/wyoming-openwakeword.git
-cd wyoming-openwakeword
+git clone https://github.com/rhasspy/wyoming-microwakeword.git
+cd wyoming-microwakeword
 script/setup
 ```
 
 Create a systemd service for it:
 
 ``` sh
-sudo systemctl edit --force --full wyoming-openwakeword.service
+sudo systemctl edit --force --full wyoming-microwakeword.service
 ```
 
 Paste in the following template, and change both `/home/pi` and the `script/run` arguments to match your set up:
 
 ```text
 [Unit]
-Description=Wyoming openWakeWord
+Description=Wyoming microWakeWord
 
 [Service]
 Type=simple
-ExecStart=/home/pi/wyoming-openwakeword/script/run --uri 'tcp://127.0.0.1:10400'
-WorkingDirectory=/home/pi/wyoming-openwakeword
+ExecStart=/home/pi/wyoming-microwakeword/script/run --uri 'tcp://127.0.0.1:10400'
+WorkingDirectory=/home/pi/wyoming-microwakeword
 Restart=always
 RestartSec=1
 
@@ -255,11 +255,11 @@ Update just the parts below:
 ```text
 [Unit]
 ...
-Requires=wyoming-openwakeword.service
+Requires=wyoming-microwakeword.service
 
 [Service]
 ...
-ExecStart=/home/pi/wyoming-satellite/script/run ... --wake-uri 'tcp://127.0.0.1:10400' --wake-word-name 'ok_nabu'
+ExecStart=/home/pi/wyoming-satellite/script/run ... --wake-uri 'tcp://127.0.0.1:10400' --wake-word-name 'okay_nabu'
 ...
 
 [Install]
@@ -276,7 +276,7 @@ sudo systemctl restart wyoming-satellite.service
 You should see the wake service get automatically loaded:
 
 ``` sh
-sudo systemctl status wyoming-satellite.service wyoming-openwakeword.service
+sudo systemctl status wyoming-satellite.service wyoming-microwakeword.service
 ```
 
 They should all be "active (running)" and green.
@@ -284,10 +284,13 @@ They should all be "active (running)" and green.
 Test out your satellite by saying "ok, nabu" and a voice command. Use `journalctl` to check the logs of services for errors:
 
 ``` sh
-journalctl -u wyoming-openwakeword.service -f
+journalctl -u wyoming-microwakeword.service -f
 ```
 
 Make sure to run `sudo systemctl daemon-reload` every time you make changes to the service.
+
+You may also use [openwakeword](https://github.com/rhasspy/wyoming-openwakeword) instead of microwakeword, since there are more custom wakewords available for it.
+The instructions are the same, with the exception of using `openwakeword` in names instead of `microwakeword`, and setting `--wake-word-name 'ok_nabu'` instead of `--wake-word-name 'okay_nabu'`.
 
 ## LED Service
 
