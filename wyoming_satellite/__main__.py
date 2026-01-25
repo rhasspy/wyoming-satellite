@@ -96,6 +96,7 @@ async def main() -> None:
     # Sound output
     parser.add_argument("--snd-uri", help="URI of Wyoming sound service")
     parser.add_argument("--snd-command", help="Program to run for sound output")
+    parser.add_argument("--snd-tts-skip-playback", help="Skip TTS playback. Defaults False")
     parser.add_argument(
         "--snd-command-rate",
         type=int,
@@ -396,6 +397,7 @@ async def main() -> None:
             volume_multiplier=args.snd_volume_multiplier,
             awake_wav=args.awake_wav,
             done_wav=args.done_wav,
+            tts_skip_playback=args.snd_tts_skip_playback
         ),
         event=EventSettings(
             uri=args.event_uri,
