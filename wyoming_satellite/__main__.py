@@ -10,6 +10,8 @@ from pathlib import Path
 from wyoming.info import Attribution, Info, Satellite
 from wyoming.server import AsyncServer, AsyncTcpServer
 
+from .fsmsat import FSMSatellite
+
 from . import __version__
 from .event_handler import SatelliteEventHandler
 from .satellite import (
@@ -20,6 +22,7 @@ from .satellite import (
 )
 from .settings import (
     EventSettings,
+    FSMSettings,
     MicSettings,
     SatelliteSettings,
     SndSettings,
@@ -164,6 +167,49 @@ async def main() -> None:
         type=float,
         default=5.0,
         help="Seconds before going back to waiting for speech when wake word isn't detected",
+    )
+
+    parser.add_argument(
+        "--fsm-stream-giveup-delay",
+        type=float,
+        default=5,
+        help=FSMSettings.stream_giveup_delay.__doc__,
+    )
+    parser.add_argument(
+        "--fsm-stream-end-delay",
+        type=float,
+        default=1.2,
+        help=FSMSettings.stream_end_delay.__doc__,
+    )
+    parser.add_argument(
+        "--fsm-tts-end-delay",
+        type=float,
+        default=0.5,
+        help=FSMSettings.tts_end_delay.__doc__,
+    )
+    parser.add_argument(
+        "--fsm-followup-vad-refractory",
+        type=float,
+        default=1.5,
+        help=FSMSettings.followup_vad_refractory.__doc__,
+    )
+    parser.add_argument(
+        "--fsm-followup-timeout",
+        type=float,
+        default=10,
+        help=FSMSettings.followup_timeout.__doc__,
+    )
+    parser.add_argument(
+        "--fsm-listen-start-wav",
+        type=str,
+        default=None,
+        help=FSMSettings.listen_start_alert_wav.__doc__,
+    )
+    parser.add_argument(
+        "--fsm-listen-stop-wav",
+        type=str,
+        default=None,
+        help=FSMSettings.listen_stop_alert_wav.__doc__,
     )
 
     # External event handlers
@@ -330,9 +376,6 @@ async def main() -> None:
         _LOGGER.fatal("%s does not exist", args.timer_finished_wav)
         sys.exit(1)
 
-    if args.vad and (args.wake_uri or args.wake_command):
-        _LOGGER.warning("VAD is not used with local wake word detection")
-
     logging.basicConfig(
         level=logging.DEBUG if args.debug else logging.INFO, format=args.log_format
     )
@@ -424,12 +467,23 @@ async def main() -> None:
             finished_wav_plays=int(args.timer_finished_wav_repeat[0]),
             finished_wav_delay=args.timer_finished_wav_repeat[1],
         ),
+        fsm=FSMSettings(
+            followup_timeout=args.fsm_followup_timeout,
+            stream_giveup_delay=args.fsm_stream_giveup_delay,
+            stream_end_delay=args.fsm_stream_end_delay,
+            tts_end_delay=args.fsm_tts_end_delay,
+            followup_vad_refractory=args.fsm_followup_vad_refractory,
+            listen_start_alert_wav=args.fsm_listen_start_wav,
+            listen_stop_alert_wav=args.fsm_listen_stop_wav,
+        ),
         debug_recording_dir=args.debug_recording_dir,
     )
 
     satellite: SatelliteBase
 
-    if settings.wake.enabled:
+    if settings.wake.enabled and settings.vad.enabled:
+        satellite = FSMSatellite(settings)
+    elif settings.wake.enabled:
         # Local wake word detection
         satellite = WakeStreamingSatellite(settings)
     elif settings.vad.enabled:
