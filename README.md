@@ -14,6 +14,8 @@ Remote voice satellite using the [Wyoming protocol](https://github.com/rhasspy/w
 
 See [the tutorial](docs/tutorial_2mic.md) to build a satellite using a [Raspberry Pi Zero 2 W](https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/) and a [ReSpeaker 2Mic HAT](https://wiki.keyestudio.com/Ks0314_keyestudio_ReSpeaker_2-Mic_Pi_HAT_V1.0).
 
+If you are using a [Raspberry Pi Zero 2 W](https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/) and a [ReSpeaker 2Mic HAT](https://wiki.keyestudio.com/Ks0314_keyestudio_ReSpeaker_2-Mic_Pi_HAT_V1.0) you can also [try out this script](https://github.com/dreed47/wyoming-satellite-scripts) to install wyoming-satellite, wyoming-openwakewords, speaker drivers and the home assistant wakeword collection in one comman. The script also provides a useful bash menu for managing wakewords and systemd services.
+
 Video tutorials:
 
 * [Wyoming Voice Satellite with ChatGPT](https://www.youtube.com/watch?v=eTKgc0YDCwE)
