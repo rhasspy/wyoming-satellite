@@ -144,7 +144,7 @@ You can play a WAV file when the wake word is detected (locally or remotely), an
 * `--done-wav <WAV>` - played when the voice command is finished
 * `--timer-finished-wav <WAV>` - played when a timer is finished
 
-If you want to play audio files other than WAV, use [event commands](#event-commands). Specifically, the `--detection-command` to replace `--awake-wav` and `--transcript-command` to replace `--done-wav`.
+If you want to play audio files other than WAV, use [event commands](#event-commands). Specifically, the `--transcribe-command` to replace `--awake-wav` and `--transcript-command` to replace `--done-wav`.
 
 The timer finished sound can be repeated with `--timer-finished-wav-repeat <repeats> <delay>` where `<repeats>` is the number of times to repeat the WAV, and `<delay>` is the number of seconds to wait between repeats.
 
@@ -179,6 +179,7 @@ Satellites can respond to events from the server by running commands:
 * `--streaming-start-command` - audio has started streaming to server (no stdin)
 * `--streaming-stop-command` - audio has stopped streaming to server (no stdin)
 * `--detection-command` - wake word is detected (wake word name on stdin)
+* `--transcribe-command` - speech-to-text transcribe is started
 * `--transcript-command` - speech-to-text transcript is returned (text on stdin)
 * `--stt-start-command` - user started speaking (no stdin)
 * `--stt-stop-command` - user stopped speaking (no stdin)
